@@ -9,7 +9,7 @@
       </label>
       <label>
         Пароль
-        <input v-model="password" type="password" autocomplete="current-password" required>
+        <PasswordInput v-model="password" autocomplete="current-password" required />
       </label>
       <p v-if="error" class="error">{{ error }}</p>
       <button type="submit" :disabled="pending">Войти</button>
