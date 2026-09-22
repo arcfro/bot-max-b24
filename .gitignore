@@ -1,0 +1,12 @@
+node_modules
+.nuxt
+.output
+.data
+dist
+.DS_Store
+.env
+.env.*
+!.env.example
+data/*.json
+data/*.bak
+!data/.gitkeep
