@@ -1,32 +1,32 @@
-# bot-max-b24 — design
+# bot-max-b24 — дизайн
 
-Standalone Nuxt app: MAX bot ↔ Bitrix24 CRM, extracted from `dz-web` Platform integration. No SQLite, no orgs/licenses/DZ/SZ.
+Отдельное Nuxt-приложение: бот MAX ↔ CRM Битрикс24, вынесенное из интеграции «Платформа» в `dz-web`. Без SQLite, без организаций/лицензий/DZ/SZ.
 
-## Goals
+## Цели
 
-- Same stack as `dz-web` (Nuxt 4, Vue 3, TypeScript, Pinia, `nuxt-auth-utils`, Vitest) **without** better-sqlite3 / Drizzle.
-- Full 1:1 bot + CRM behaviour from `dz-web` (commands, contacts, deals, file attach, allowlist, welcome/deny, mid dedup).
-- Admin UI: settings only — no platform menus, no org overview.
-- Auth: multiple admins from `.env` JSON (`ADMINS`), plaintext passwords as specified.
+- Тот же стек, что у `dz-web` (Nuxt 4, Vue 3, TypeScript, Pinia, `nuxt-auth-utils`, Vitest), **без** better-sqlite3 / Drizzle.
+- Поведение бота и CRM 1:1 с `dz-web` (команды, контакты, сделки, вложения, allowlist, welcome/deny, дедуп mid).
+- Админ-UI: только настройки — без меню платформы и обзора организаций.
+- Авторизация: несколько админов из JSON в `.env` (`ADMINS`), пароли plaintext, как задано.
 
-## Non-goals
+## Вне скоупа
 
-- Organizations, licenses, DB backup, invites, DZ/SZ.
-- Password hashing for admins.
-- Multi-tenant / sync with `dz-web`.
-- Shared npm package with `dz-web` (copy code; diverge freely).
+- Организации, лицензии, бэкап БД, инвайты, DZ/SZ.
+- Хеширование паролей админов.
+- Мультитенантность / синхронизация с `dz-web`.
+- Общий npm-пакет с `dz-web` (код копируем; дальше можно расходиться).
 
-## Architecture
+## Архитектура
 
 ```
-/Users/arcfro/ingeo/bot-max-b24/   (sibling of dz-web)
+/Users/arcfro/ingeo/bot-max-b24/   (рядом с dz-web)
 ├── app/
-│   ├── pages/index.vue      # settings (auth required)
+│   ├── pages/index.vue      # настройки (нужна сессия)
 │   ├── pages/login.vue
-│   ├── layouts/default.vue  # empty shell, logout only on /
-│   └── assets/css/main.css  # trimmed from dz-web
+│   ├── layouts/default.vue  # пустая оболочка, «Выйти» только на /
+│   └── assets/css/main.css  # урезанный из dz-web
 ├── shared/
-│   └── max-commands.ts      # copy from dz-web
+│   └── max-commands.ts      # копия из dz-web
 ├── server/
 │   ├── api/auth/{login,logout,me}.*
 │   ├── api/settings/max.{get,post}.ts
@@ -38,54 +38,54 @@ Standalone Nuxt app: MAX bot ↔ Bitrix24 CRM, extracted from `dz-web` Platform 
 │       ├── json-store.ts
 │       ├── admins.ts
 │       └── public-origin.ts
-├── data/                    # gitignored; runtime JSON
+├── data/                    # в .gitignore; runtime JSON
 └── tests/
 ```
 
-SSR off for the app (SPA). Nitro alias `#shared` → `./shared`.
+SSR выключен (SPA). Алиас Nitro `#shared` → `./shared`.
 
-## Auth
+## Авторизация
 
-- Env: `ADMINS=[{"email":"a@x","password":"..."},...]` (JSON array).
-- Env: `NUXT_SESSION_PASSWORD` (≥32 chars) for sealed cookie (`nuxt-auth-utils`).
-- `POST /api/auth/login` — case-insensitive email match, exact password; on success `setUserSession({ user: { email } })`.
+- Env: `ADMINS=[{"email":"a@x","password":"..."},...]` (JSON-массив).
+- Env: `NUXT_SESSION_PASSWORD` (≥32 символов) для sealed cookie (`nuxt-auth-utils`).
+- `POST /api/auth/login` — email без учёта регистра, пароль точное совпадение; при успехе `setUserSession({ user: { email } })`.
 - `POST /api/auth/logout`, `GET /api/auth/me`.
-- Middleware: all routes except `/login` and `POST /api/max/webhook` require a session.
-- Routes: `/` = settings; unauthenticated → `/login`. After login → `/`.
+- Middleware: все маршруты кроме `/login` и `POST /api/max/webhook` требуют сессию.
+- Маршруты: `/` = настройки; без сессии → `/login`. После логина → `/`.
 
-## Settings UI (`/`)
+## UI настроек (`/`)
 
-Port of the «Интеграция с MAX» card from `dz-web` `app/pages/platform/index.vue`:
+Порт карточки «Интеграция с MAX» из `dz-web` `app/pages/platform/index.vue`:
 
-- Bot token (password input; blank = keep stored)
-- Bitrix24 incoming webhook URL
-- «Подключить» — validates only filled fields; token also subscribes bot to public HTTPS webhook
-- Allowlist enable + textarea; «Сохранить список»
-- Status lines: connected bot name, subscribedAt, webhook URL, bitrix host, errors
+- Токен бота (password-поле; пусто = оставить сохранённый)
+- URL входящего вебхука Битрикс24
+- «Подключить» — проверяет только заполненные поля; токен дополнительно подписывает бота на публичный HTTPS-webhook
+- Allowlist: флаг + textarea; «Сохранить список»
+- Статус: имя бота, subscribedAt, URL webhook, хост Битрикс24, ошибки
 - «Выйти»
 
-No org KPIs, backup, or platform nav.
+Без KPI по организациям, бэкапа и навигации платформы.
 
 ## API
 
-| Method | Path | Auth | Role |
-|--------|------|------|------|
-| GET | `/api/settings/max` | session | status (`PlatformMaxStatus`-shaped; no secrets) |
-| POST | `/api/settings/max` | session | connect / allowlist patch (same body semantics as `platform/max.post`) |
-| POST | `/api/max/webhook` | webhook secret | MAX updates → `handleMaxUpdate` |
-| POST | `/api/auth/login` | public | |
-| POST | `/api/auth/logout` | session | |
-| GET | `/api/auth/me` | session | |
+| Метод | Путь | Auth | Назначение |
+|--------|------|------|------------|
+| GET | `/api/settings/max` | сессия | статус (форма `PlatformMaxStatus`; без секретов) |
+| POST | `/api/settings/max` | сессия | подключение / патч allowlist (семантика тела как у `platform/max.post`) |
+| POST | `/api/max/webhook` | секрет webhook | апдейты MAX → `handleMaxUpdate` |
+| POST | `/api/auth/login` | публичный | |
+| POST | `/api/auth/logout` | сессия | |
+| GET | `/api/auth/me` | сессия | |
 
-Webhook URL: `{NUXT_PUBLIC_APP_URL}/api/max/webhook` (same HTTPS rules as dz-web `publicOrigin` / `httpsWebhookProblem`).
+URL webhook: `{NUXT_PUBLIC_APP_URL}/api/max/webhook` (те же правила HTTPS, что `publicOrigin` / `httpsWebhookProblem` в dz-web).
 
-## Persistence (JSON files)
+## Хранение (JSON-файлы)
 
-Directory: `DATA_DIR` or `./data`. Create on first write. Gitignore contents; ship `*.example.json` if useful.
+Каталог: `DATA_DIR` или `./data`. Создаётся при первой записи. Содержимое в `.gitignore`; при необходимости — `*.example.json`.
 
 ### `settings.json`
 
-One object (was `max_integration` row):
+Один объект (бывшая строка `max_integration`):
 
 ```json
 {
@@ -114,34 +114,34 @@ One object (was `max_integration` row):
 }
 ```
 
-### Write protocol
+### Протокол записи
 
-- Read → mutate → write temp → rename (atomic where possible).
-- Before overwrite: copy previous to `*.bak`.
-- Corrupt/missing file: start from empty defaults for state; settings missing → empty defaults (not connected).
-- `claimMid` / `claimGreeting`: insert-if-absent semantics (return false if already present).
-- Prune `seen` entries older than 30 days on claim (same as dz-web).
+- Read → mutate → запись во временный файл → rename (атомарно, где возможно).
+- Перед перезаписью: копия в `*.bak`.
+- Битый/отсутствующий файл: state → пустые defaults; settings → пустые defaults (не подключено).
+- `claimMid` / `claimGreeting`: семантика insert-if-absent (false, если уже есть).
+- Prune записей `seen` старше 30 дней при claim (как в dz-web).
 
-Concurrency: single Node process assumption (same as typical dz-web deploy). No multi-writer locking beyond atomic rename.
+Конкуренция: один процесс Node (как типичный деплой dz-web). Без multi-writer lock, кроме atomic rename.
 
-## Bot / CRM behaviour
+## Поведение бота / CRM
 
-Copy and adapt from dz-web (behaviour unchanged):
+Копия и адаптация из dz-web (поведение без изменений):
 
-- `shared/max-commands.ts` + tests
-- `server/utils/max-bot.ts` — MAX API, subscribe, verify Bitrix probe, status helper
-- `server/utils/bitrix-crm.ts` — contact/deal/file attach
-- `server/utils/max-inbox.ts` — allowlist, plan, CRM calls, replies; storage via json-store instead of Drizzle
-- Trusted CAs helper if required for MAX/Bitrix HTTPS (copy `russian-trusted-cas` only if still needed)
+- `shared/max-commands.ts` + тесты
+- `server/utils/max-bot.ts` — MAX API, subscribe, проверка Битрикс probe, статус
+- `server/utils/bitrix-crm.ts` — контакт / сделка / вложения
+- `server/utils/max-inbox.ts` — allowlist, plan, CRM, ответы; хранение через json-store вместо Drizzle
+- Хелпер trusted CA — копировать `russian-trusted-cas` только если ещё нужен для HTTPS к MAX/Битрикс
 
-Commands remain: Н/Новая, С/Сумма, Дн/Дз dates, К/Клиент, file attach, ?/.
+Команды без изменений: Н/Новая, С/Сумма, Дн/Дз даты, К/Клиент, файл, ?/.
 
-## Error handling
+## Ошибки
 
-- Connect: independent `tokenError` / `bitrixError`; save only fields that passed.
-- Webhook: bad secret → 401; CRM errors → user-facing MAX reply + server log.
-- Login: generic «Неверный email или пароль» (no user enumeration).
-- JSON I/O failures → 500 with clear message; keep `.bak`.
+- Подключение: независимые `tokenError` / `bitrixError`; сохраняются только успешно проверенные поля.
+- Webhook: плохой секрет → 401; ошибки CRM → ответ пользователю в MAX + лог на сервере.
+- Логин: общее «Неверный email или пароль» (без enumeration).
+- Сбои JSON I/O → 500 с понятным текстом; `.bak` сохраняется.
 
 ## Env
 
@@ -152,30 +152,30 @@ NUXT_PUBLIC_APP_URL=https://bot.example.com
 DATA_DIR=./data
 ```
 
-Optional: session cookie `secure` when `APP_URL` is https (or always in production).
+Опционально: cookie `secure`, если `APP_URL` на https (или всегда в production).
 
-## Tests
+## Тесты
 
-- Port `tests/shared/max-commands.test.ts`
-- Adapt `tests/server/max-bot.test.ts` (no DB)
-- New: `admins` parse/match; json-store claimMid/claimGreeting/prune; allowlist wiring if not already covered
+- Перенос `tests/shared/max-commands.test.ts`
+- Адаптация `tests/server/max-bot.test.ts` (без БД)
+- Новые: парсинг/матч `ADMINS`; json-store claimMid/claimGreeting/prune; allowlist, если не покрыт
 
-## Source map (from dz-web)
+## Карта исходников (из dz-web)
 
-| Source | Destination |
-|--------|-------------|
-| `shared/max-commands.ts` | same |
-| `shared/platform.ts` (`PlatformMaxStatus` only) | `shared/max-status.ts` or inline |
-| `server/utils/max-bot.ts` | same (drop DB reads; use json-store) |
-| `server/utils/max-inbox.ts` | same (json-store) |
-| `server/utils/bitrix-crm.ts` | same |
+| Источник | Куда |
+|----------|------|
+| `shared/max-commands.ts` | то же |
+| `shared/platform.ts` (только `PlatformMaxStatus`) | `shared/max-status.ts` или inline |
+| `server/utils/max-bot.ts` | то же (без БД; json-store) |
+| `server/utils/max-inbox.ts` | то же (json-store) |
+| `server/utils/bitrix-crm.ts` | то же |
 | `server/api/platform/max.{get,post}.ts` | `server/api/settings/max.*` |
-| `server/api/max/webhook.post.ts` | same |
-| Platform MAX UI block | `app/pages/index.vue` |
+| `server/api/max/webhook.post.ts` | то же |
+| Блок UI MAX на платформе | `app/pages/index.vue` |
 
-## Success criteria
+## Критерии готовности
 
-1. `npm run dev` → `/login` → `/` settings works with `ADMINS`.
-2. Connect MAX + Bitrix stores into `data/settings.json`; webhook URL shown.
-3. Incoming MAX message creates/updates Bitrix deal; state in `data/state.json`.
-4. Golden command tests pass; no sqlite dependency in `package.json`.
+1. `npm run dev` → `/login` → `/` настройки работают с `ADMINS`.
+2. Подключение MAX + Битрикс пишет в `data/settings.json`; показан URL webhook.
+3. Входящее сообщение MAX создаёт/обновляет сделку в Битрикс; state в `data/state.json`.
+4. Golden-тесты команд проходят; в `package.json` нет зависимости от sqlite.
