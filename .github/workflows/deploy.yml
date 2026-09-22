@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NITRO_PRESET: node-server
+
+      - name: Setup SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Check SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" 'echo ok && df -h /'
+
+      - name: Upload and restart
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          tar -C .output -czf /tmp/bot-max-b24-output.tar.gz .
+          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes \
+            /tmp/bot-max-b24-output.tar.gz \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/bot-max-b24-output.tar.gz"
+          scp -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes \
+            deploy/ci-remote.sh \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/bot-max-b24-ci-remote.sh"
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o BatchMode=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sed -i 's/\r$//' /tmp/bot-max-b24-ci-remote.sh && bash /tmp/bot-max-b24-ci-remote.sh && rm -f /tmp/bot-max-b24-ci-remote.sh"

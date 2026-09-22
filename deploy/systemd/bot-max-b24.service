@@ -1,0 +1,17 @@
+[Unit]
+Description=bot-max-b24 — MAX ↔ Битрикс24
+After=network.target
+
+[Service]
+Type=simple
+User=dz
+WorkingDirectory=/opt/bot-max-b24
+EnvironmentFile=/opt/bot-max-b24/.env
+Environment=HOST=127.0.0.1
+Environment=PORT=3001
+ExecStart=/usr/bin/node /opt/bot-max-b24/.output/server/index.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
