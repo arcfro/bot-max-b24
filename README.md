@@ -25,3 +25,7 @@ Webhook MAX: `{NUXT_PUBLIC_APP_URL}/api/max/webhook`
 - `npm run dev` — разработка
 - `npm test` — Vitest
 - `npm run build` / `npm start` — прод
+
+## Прод
+
+`https://max.ingeo-lab.ru` — см. [`deploy/README.md`](deploy/README.md). CI: пуш в `main` → GitHub Actions **Deploy**.
