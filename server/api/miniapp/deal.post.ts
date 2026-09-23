@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
   }
   catch (error) {
     const message = failureMessage(error, 'Ошибка')
-    if (/not found/i.test(message)) {
+    if (/not[_\s-]*found/i.test(message)) {
       if (!requested) {
         clearDeal(user.userId)
         return formFromDeal(null)

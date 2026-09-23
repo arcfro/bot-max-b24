@@ -11,7 +11,7 @@ export default defineNuxtConfig({
       title: 'MAX ↔ Битрикс24',
       script: [
         {
-          innerHTML: `(function(){function snap(){try{var p=new URLSearchParams((location.hash||'').replace(/^#/,''));var v=p.get('WebAppData');if(v)sessionStorage.setItem('WebAppData',v);var w=window.WebApp&&window.WebApp.initData;if(w)sessionStorage.setItem('WebAppData',w)}catch(e){}}snap();var n=0;var t=setInterval(function(){snap();if(++n>100)clearInterval(t)},50)})();`,
+          innerHTML: `(function(){function pick(raw){raw=(raw||'').replace(/^[?#]/,'');if(!raw)return'';var p=new URLSearchParams(raw);var w=p.get('WebAppData');if(w)return w;if(!(p.has('hash')&&p.has('auth_date')&&p.has('user')))return'';var out=[];p.forEach(function(v,k){if(k.indexOf('WebApp')===0)return;out.push(k+'='+encodeURIComponent(v))});return out.join('&')}function snap(){try{var v=pick(location.hash)||pick(location.search);try{var n=performance.getEntriesByType('navigation')[0];if(n&&n.name){var u=new URL(n.name);v=v||pick(u.hash)||pick(u.search)}}catch(e){}var b=window.WebApp&&window.WebApp.initData;if(b)v=b;if(v){sessionStorage.setItem('WebAppData',v);window.dispatchEvent(new Event('max-init'))}}catch(e){}}snap();window.addEventListener('hashchange',snap);var n=0;var t=setInterval(function(){snap();if(++n>150)clearInterval(t)},200)})();`,
         },
         { src: 'https://st.max.ru/js/max-web-app.js' },
       ],

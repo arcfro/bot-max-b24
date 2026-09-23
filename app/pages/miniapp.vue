@@ -7,46 +7,49 @@
     <form class="card stack" @submit.prevent="submit()">
       <label>
         ID сделки
-        <input v-model="dealIdInput" inputmode="numeric" autocomplete="off" :disabled="!ready || pending">
+        <span class="id-line">
+          <input v-model="dealIdInput" inputmode="numeric" autocomplete="off" :disabled="!ready || pending">
+          <span v-if="looking" class="spinner" aria-label="Загрузка сделки" />
+        </span>
       </label>
+      <p v-if="error" class="error" style="margin: 0;">{{ error }}</p>
       <label>
         Название
-        <input v-model="title" autocomplete="off" :disabled="pending">
+        <input v-model="title" autocomplete="off" :disabled="pending || looking">
       </label>
       <label>
         Сумма
-        <input v-model="amount" inputmode="decimal" autocomplete="off" :disabled="pending">
+        <input v-model="amount" inputmode="decimal" autocomplete="off" :disabled="pending || looking">
       </label>
       <label>
         Дата начала
-        <input v-model="begin" type="date" :disabled="pending">
+        <input v-model="begin" type="date" :disabled="pending || looking">
       </label>
       <label>
         Дата завершения
-        <input v-model="close" type="date" :disabled="pending">
+        <input v-model="close" type="date" :disabled="pending || looking">
       </label>
       <label>
         Клиент
-        <input v-model="clientName" autocomplete="name" :disabled="pending">
+        <input v-model="clientName" autocomplete="name" :disabled="pending || looking">
       </label>
       <label>
         Файл
-        <input ref="fileInput" type="file" :disabled="pending" @change="onFile">
+        <input ref="fileInput" type="file" :disabled="pending || looking" @change="onFile">
       </label>
-      <button type="submit" :disabled="pending || !ready">
+      <button type="submit" :disabled="pending || looking || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
       </button>
       <button
         v-if="dealId"
         class="secondary"
         type="button"
-        :disabled="pending || !ready"
+        :disabled="pending || looking || !ready"
         @click="submit(true)"
       >
         Новая сделка
       </button>
       <p v-if="message" class="muted" style="margin: 0;">{{ message }}</p>
-      <p v-if="error" class="error" style="margin: 0;">{{ error }}</p>
     </form>
   </div>
 </template>
@@ -70,6 +73,7 @@ const clientName = ref('')
 const file = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const pending = ref(false)
+const looking = ref(false)
 const ready = ref(false)
 const error = ref('')
 const message = ref('')
@@ -80,25 +84,55 @@ let loadTimer: ReturnType<typeof setTimeout> | undefined
 watch(dealIdInput, (value) => {
   const id = value.trim()
   if (loadTimer) clearTimeout(loadTimer)
+  looking.value = false
   if (!ready.value || !/^\d+$/.test(id) || id === loadedId) return
   loadTimer = setTimeout(() => openDeal(id), 300)
 })
 
+function navigationFragment(): string {
+  const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+  if (!entry?.name) return ''
+  try {
+    const url = new URL(entry.name)
+    return `${url.hash}&${url.search.replace(/^\?/, '')}`
+  }
+  catch {
+    return ''
+  }
+}
+
 function webAppInitData(): string {
   const webApp = (window as Window & { WebApp?: { initData?: string } }).WebApp
   const value = readLaunchInitData(location.hash, sessionStorage.getItem('WebAppData'), webApp?.initData)
+    || readLaunchInitData(location.search, null, null)
+    || readLaunchInitData(navigationFragment(), null, null)
   if (value) sessionStorage.setItem('WebAppData', value)
   return value
 }
 
 async function waitInitData(): Promise<string> {
   const started = Date.now()
-  while (Date.now() - started < 4000) {
+  while (Date.now() - started < 8000) {
     const value = webAppInitData()
     if (value) return value
     await new Promise(resolve => setTimeout(resolve, 50))
   }
   return webAppInitData()
+}
+
+let lateBound = false
+
+function launchDiag(): string {
+  try {
+    const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    const nav = entry?.name ? new URL(entry.name).hash.length : 0
+    const stored = sessionStorage.getItem('WebAppData') ? 1 : 0
+    const webView = 'WebViewHandler' in window ? 1 : 0
+    return `h${location.hash.length} n${nav} s${stored} v${webView}`
+  }
+  catch {
+    return 'diag'
+  }
 }
 
 function fail(e: any, fallback: string) {
@@ -118,27 +152,50 @@ function showDeal(deal: DealResponse, fill: boolean) {
   clientName.value = deal.client || ''
 }
 
+let lookup = 0
+
 async function openDeal(id: string) {
   if (id !== dealIdInput.value.trim()) return
+  const ticket = ++lookup
+  looking.value = true
   error.value = ''
   try {
     const deal = await $fetch<DealResponse>('/api/miniapp/deal', {
       method: 'POST',
       body: { initData, id },
     })
-    if (id !== dealIdInput.value.trim()) return
+    if (ticket !== lookup || id !== dealIdInput.value.trim()) return
     showDeal(deal, true)
     message.value = ''
   }
   catch (e: any) {
-    if (id === dealIdInput.value.trim()) fail(e, 'Сделка не найдена')
+    if (ticket !== lookup || id !== dealIdInput.value.trim()) return
+    const status = e?.statusCode || e?.status
+    const text = String(e?.data?.statusMessage || e?.statusMessage || '')
+    if (status === 404 || /not[_\s-]*found/i.test(text)) error.value = 'Сделка не найдена'
+    else fail(e, 'Сделка не найдена')
+  }
+  finally {
+    if (ticket === lookup) looking.value = false
   }
 }
 async function loadDeal() {
   error.value = ''
   initData = await waitInitData()
   if (!initData) {
-    error.value = 'Откройте экран из MAX'
+    error.value = `Откройте экран из MAX (${launchDiag()})`
+    if (!lateBound) {
+      lateBound = true
+      const pull = () => {
+        const value = webAppInitData()
+        if (!value) return
+        window.removeEventListener('hashchange', pull)
+        window.removeEventListener('max-init', pull)
+        loadDeal()
+      }
+      window.addEventListener('hashchange', pull)
+      window.addEventListener('max-init', pull)
+    }
     return
   }
   ready.value = true
@@ -205,5 +262,29 @@ h1 {
 
 button {
   width: 100%;
+}
+
+.id-line {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.id-line input {
+  flex: 1;
+}
+
+.spinner {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

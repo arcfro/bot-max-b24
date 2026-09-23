@@ -7,6 +7,11 @@ describe('readLaunchInitData', () => {
     expect(readLaunchInitData(hash, null, '')).toBe('auth_date=1&user={"id":5}')
   })
 
+  it('reads a flat desktop hash without the WebAppData wrapper', () => {
+    const hash = '#auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab&WebAppPlatform=desktop'
+    expect(readLaunchInitData(hash, null, '')).toBe('auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab')
+  })
+
   it('falls back to storage, then the bridge', () => {
     expect(readLaunchInitData('', 'from-storage', '')).toBe('from-storage')
     expect(readLaunchInitData('#WebAppPlatform=desktop', null, 'from-bridge')).toBe('from-bridge')
