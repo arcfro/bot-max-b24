@@ -128,12 +128,20 @@ export async function setDealClient(webhook: string, dealId: string, contactId: 
   })
 }
 
+export async function getMaxDeal(webhook: string, dealId: string): Promise<{ id: string, title: string }> {
+  const deal = await bitrixCall<{ ID?: string | number, TITLE?: string | null }>(webhook, 'crm.deal.get', {
+    id: asId(dealId),
+  })
+  return { id: String(deal.ID ?? dealId), title: String(deal.TITLE ?? '') }
+}
+
 export async function updateMaxDeal(
   webhook: string,
   dealId: string,
-  patch: { opportunity?: number, begin?: string, close?: string },
+  patch: { title?: string, opportunity?: number, begin?: string, close?: string },
 ) {
   const fields: Record<string, unknown> = {}
+  if (patch.title) fields.TITLE = patch.title.slice(0, 255)
   if (patch.opportunity != null) fields.OPPORTUNITY = patch.opportunity
   if (patch.begin) fields.BEGINDATE = patch.begin
   if (patch.close) fields.CLOSEDATE = patch.close
