@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filesFromTimelineComments, formFromDeal } from '#shared/miniapp-deal'
+import { filesFromTimelineComments, formFromDeal, parseDealFileId } from '#shared/miniapp-deal'
 
 describe('formFromDeal', () => {
   it('maps Bitrix deal fields into the form', () => {
@@ -34,6 +34,14 @@ describe('formFromDeal', () => {
   })
 })
 
+describe('parseDealFileId', () => {
+  it('splits comment id and file name', () => {
+    expect(parseDealFileId('42:scan.pdf')).toEqual({ commentId: '42', name: 'scan.pdf' })
+    expect(parseDealFileId('bad')).toBeNull()
+    expect(parseDealFileId(':name')).toBeNull()
+  })
+})
+
 describe('filesFromTimelineComments', () => {
   it('keeps only MAX uploads and sorts by date desc', () => {
     expect(filesFromTimelineComments([
@@ -56,8 +64,28 @@ describe('filesFromTimelineComments', () => {
         FILES: { '1': { id: 12, name: 'skip.doc' } },
       },
     ])).toEqual([
-      { id: '2:11', name: 'new.jpg', created: '2026-09-22T12:00:00+03:00' },
-      { id: '1:10', name: 'old.pdf', created: '2026-09-20T10:00:00+03:00' },
+      { id: '2:new.jpg', name: 'new.jpg', created: '2026-09-22T12:00:00+03:00' },
+      { id: '1:old.pdf', name: 'old.pdf', created: '2026-09-20T10:00:00+03:00' },
+    ])
+  })
+
+  it('reads file names from comment text when FILES is empty in list', () => {
+    expect(filesFromTimelineComments([
+      {
+        ID: '9',
+        CREATED: '2026-09-23T09:00:00+03:00',
+        COMMENT: 'Файл из MAX: scan.pdf, photo.jpg',
+      },
+      {
+        ID: '10',
+        CREATED: '2026-09-23T10:00:00+03:00',
+        COMMENT: 'Файл из MAX: one.docx',
+        FILES: null,
+      },
+    ])).toEqual([
+      { id: '10:one.docx', name: 'one.docx', created: '2026-09-23T10:00:00+03:00' },
+      { id: '9:scan.pdf', name: 'scan.pdf', created: '2026-09-23T09:00:00+03:00' },
+      { id: '9:photo.jpg', name: 'photo.jpg', created: '2026-09-23T09:00:00+03:00' },
     ])
   })
 })

@@ -42,6 +42,7 @@ describe('planMaxMessage', () => {
       begin: '2026-09-23',
       close: '2026-09-30',
       client: 'Иван',
+      files: [{ name: 'act.pdf' }, { name: 'photo.jpg' }],
     })).toBe([
       '№:14',
       'Н: Скважина',
@@ -49,7 +50,18 @@ describe('planMaxMessage', () => {
       'Дн: 23.09.2026',
       'Дз: 30.09.2026',
       'К: Иван',
+      'Файлы:',
+      '• act.pdf',
+      '• photo.jpg',
     ].join('\n'))
+    expect(dealFieldsReply({
+      id: '14',
+      title: 'Скважина',
+      amount: '50000',
+      begin: '2026-09-23',
+      close: '2026-09-30',
+      client: 'Иван',
+    })).toContain('Файлы: —')
   })
 
   it('creates a deal from Н: and Новая:, case-insensitive', () => {

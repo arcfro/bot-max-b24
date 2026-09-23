@@ -34,15 +34,24 @@ export function dealFieldsReply(form: {
   begin: string
   close: string
   client: string
+  files?: { name: string }[]
 }): string {
-  return [
+  const lines = [
     `№:${form.id ?? ''}`,
     `Н: ${form.title}`,
     `С: ${form.amount}`,
     `Дн: ${isoToRu(form.begin)}`,
     `Дз: ${isoToRu(form.close)}`,
     `К: ${form.client}`,
-  ].join('\n')
+  ]
+  if (form.files?.length) {
+    lines.push('Файлы:')
+    for (const file of form.files) lines.push(`• ${file.name}`)
+  }
+  else {
+    lines.push('Файлы: —')
+  }
+  return lines.join('\n')
 }
 
 function isoToRu(iso: string): string {

@@ -1,4 +1,10 @@
-import { filesFromTimelineComments, formFromDeal, type DealFile, type DealForm } from '#shared/miniapp-deal'
+import {
+  filesFromTimelineComments,
+  formFromDeal,
+  parseDealFileId,
+  type DealFile,
+  type DealForm,
+} from '#shared/miniapp-deal'
 import { bitrixWebhookBase } from './max-bot'
 
 type BitrixResponse<T> = {
@@ -134,22 +140,33 @@ export async function getMaxDeal(webhook: string, dealId: string): Promise<{ id:
   return { id: form.id || dealId, title: form.title }
 }
 
+type TimelineCommentRow = {
+  ID?: string | number
+  CREATED?: string | null
+  COMMENT?: string | null
+  FILES?: Record<string, {
+    id?: string | number
+    name?: string | null
+    date?: string | null
+  }> | Array<string | [string, string]> | null
+}
+
 export async function getDealFiles(webhook: string, dealId: string): Promise<DealFile[]> {
-  const list = await bitrixCall<Array<{
-    ID?: string | number
-    CREATED?: string | null
-    COMMENT?: string | null
-    FILES?: Record<string, {
-      id?: string | number
-      name?: string | null
-      date?: string | null
-    }> | null
-  }>>(webhook, 'crm.timeline.comment.list', {
-    filter: { ENTITY_ID: asId(dealId), ENTITY_TYPE: 'deal' },
-    select: ['ID', 'CREATED', 'COMMENT', 'FILES'],
-    order: { CREATED: 'DESC' },
-  })
-  return filesFromTimelineComments(Array.isArray(list) ? list : [])
+  const comments: TimelineCommentRow[] = []
+  let start = 0
+  while (true) {
+    const page = await bitrixCall<TimelineCommentRow[]>(webhook, 'crm.timeline.comment.list', {
+      filter: { ENTITY_ID: asId(dealId), ENTITY_TYPE: 'deal' },
+      select: ['ID', 'CREATED', 'COMMENT', 'FILES'],
+      order: { CREATED: 'DESC' },
+      start,
+    })
+    const batch = Array.isArray(page) ? page : []
+    comments.push(...batch)
+    if (batch.length < 50) break
+    start += 50
+  }
+  return filesFromTimelineComments(comments)
 }
 
 export async function getMaxDealForm(webhook: string, dealId: string): Promise<DealForm> {
@@ -178,7 +195,7 @@ export async function getMaxDealForm(webhook: string, dealId: string): Promise<D
   })()
   const [client, files] = await Promise.all([
     clientPromise,
-    getDealFiles(webhook, dealId),
+    getDealFiles(webhook, dealId).catch(() => [] as DealFile[]),
   ])
   return {
     ...formFromDeal({
@@ -204,6 +221,40 @@ export async function updateMaxDeal(
   if (patch.begin) fields.BEGINDATE = patch.begin
   if (patch.close) fields.CLOSEDATE = patch.close
   await bitrixCall(webhook, 'crm.deal.update', { id: asId(dealId), fields })
+}
+
+const DEAL_OWNER_TYPE_ID = 2
+
+export async function deleteDealFile(webhook: string, dealId: string, fileId: string) {
+  const parsed = parseDealFileId(fileId)
+  if (!parsed) throw new Error('Некорректный файл')
+
+  const comment = await bitrixCall<{
+    ID?: string | number
+    ENTITY_ID?: string | number
+    ENTITY_TYPE?: string | null
+    COMMENT?: string | null
+    CREATED?: string | null
+    FILES?: TimelineCommentRow['FILES']
+  }>(webhook, 'crm.timeline.comment.get', { id: asId(parsed.commentId) })
+
+  if (String(comment.ENTITY_TYPE ?? '') !== 'deal') throw new Error('Файл не найден')
+  if (String(comment.ENTITY_ID ?? '') !== String(dealId)) throw new Error('Файл не найден')
+  if (!String(comment.COMMENT ?? '').includes('Файл из MAX')) throw new Error('Файл не найден')
+
+  const known = filesFromTimelineComments([{
+    ID: parsed.commentId,
+    CREATED: comment.CREATED,
+    COMMENT: comment.COMMENT,
+    FILES: comment.FILES,
+  }])
+  if (!known.some(file => file.id === fileId)) throw new Error('Файл не найден')
+
+  await bitrixCall<null>(webhook, 'crm.timeline.comment.delete', {
+    id: asId(parsed.commentId),
+    ownerTypeId: DEAL_OWNER_TYPE_ID,
+    ownerId: asId(dealId),
+  })
 }
 
 export async function attachFilesToDeal(

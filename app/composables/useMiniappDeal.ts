@@ -16,6 +16,7 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
   const files = ref<DealFile[]>([])
   const pending = ref(false)
   const looking = ref(false)
+  const deletingFileId = ref<string | null>(null)
   const error = ref('')
   const message = ref('')
 
@@ -48,7 +49,7 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
   }
 
   function canAutoSync(): boolean {
-    if (!ready.value || !initData.value || pending.value || looking.value) return false
+    if (!ready.value || !initData.value || pending.value || looking.value || deletingFileId.value) return false
     const typed = inputDealId()
     return !typed || typed === loadedId
   }
@@ -180,6 +181,27 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
     }
   }
 
+  async function deleteFile(fileId: string) {
+    if (!dealId.value || pending.value || looking.value || deletingFileId.value) return
+    error.value = ''
+    message.value = ''
+    deletingFileId.value = fileId
+    try {
+      const deal = await $fetch<DealResponse>('/api/miniapp/delete-file', {
+        method: 'POST',
+        body: { initData: initData.value, fileId },
+      })
+      showDeal(deal, false)
+      message.value = deal.message || 'Файл удалён'
+    }
+    catch (e: unknown) {
+      error.value = apiErrorMessage(e, 'Не удалось удалить файл')
+    }
+    finally {
+      deletingFileId.value = null
+    }
+  }
+
   async function submit(forceNew = false) {
     error.value = ''
     message.value = ''
@@ -219,12 +241,14 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
     files,
     pending,
     looking,
+    deletingFileId,
     error,
     message,
     loadActiveDeal,
     syncRevision,
     pickFile,
     onFile,
+    deleteFile,
     submit,
   }
 }

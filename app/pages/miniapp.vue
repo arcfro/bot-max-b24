@@ -53,7 +53,13 @@
           </button>
         </span>
       </label>
-      <MiniappDealFileList v-if="dealId" :files="files" />
+      <MiniappDealFileList
+        v-if="dealId"
+        :files="files"
+        :disabled="pending || looking || !ready"
+        :deleting-id="deletingFileId"
+        @delete="deleteFile"
+      />
       <button type="submit" :disabled="pending || looking || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
       </button>
@@ -89,12 +95,14 @@ const {
   files,
   pending,
   looking,
+  deletingFileId,
   error,
   message,
   loadActiveDeal,
   syncRevision,
   pickFile,
   onFile,
+  deleteFile,
   submit,
 } = useMiniappDeal(initData, ready)
 

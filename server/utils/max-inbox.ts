@@ -15,6 +15,7 @@ import {
   createMaxDeal,
   findOrCreateMaxContact,
   findOrCreateNamedContact,
+  getDealFiles,
   getMaxDealForm,
   setDealClient,
   updateMaxDeal,
@@ -150,6 +151,7 @@ export async function handleMaxUpdate(update: unknown) {
       const files = await loadFiles(token, media)
       await attachFilesToDeal(webhook, dealId, files)
       lines.push(FILE_ATTACHED)
+      lines.push(await dealFilesLine(webhook, dealId))
     }
 
     saveClient(message.userId, contactId, dealId)
@@ -183,9 +185,10 @@ async function openDeal(
     saveClient(message.userId, savedContact, openedId)
     const lines = [dealFieldsReply({ ...form, id: openedId })]
     if (media.length) {
-      const files = await loadFiles(token, media)
-      await attachFilesToDeal(webhook, openedId, files)
+      const uploaded = await loadFiles(token, media)
+      await attachFilesToDeal(webhook, openedId, uploaded)
       lines.push(FILE_ATTACHED)
+      form.files = await getDealFiles(webhook, openedId).catch(() => form.files)
     }
     await reply(lines.join('\n'))
   }
@@ -197,6 +200,12 @@ async function openDeal(
     }
     await reply(messageText)
   }
+}
+
+async function dealFilesLine(webhook: string, dealId: string): Promise<string> {
+  const files = await getDealFiles(webhook, dealId).catch(() => [])
+  if (!files.length) return 'Файлы: —'
+  return ['Файлы:', ...files.map(file => `• ${file.name}`)].join('\n')
 }
 
 async function loadFiles(token: string, attachments: MaxAttachment[]) {

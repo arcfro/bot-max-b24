@@ -23,6 +23,16 @@ export function dealFileDate(raw: string): string {
   return match?.[1] ?? ''
 }
 
+/** `{commentId}:{fileName}` из filesFromTimelineComments. */
+export function parseDealFileId(raw: string): { commentId: string, name: string } | null {
+  const idx = raw.indexOf(':')
+  if (idx <= 0) return null
+  const commentId = raw.slice(0, idx)
+  const name = raw.slice(idx + 1)
+  if (!/^\d+$/.test(commentId) || !name) return null
+  return { commentId, name }
+}
+
 const MAX_FILE_PREFIX = 'Файл из MAX'
 
 const empty: DealForm = {
@@ -78,20 +88,48 @@ type TimelineComment = {
   }> | null
 }
 
+function fileNamesFromFilesField(files: TimelineComment['FILES']): string[] {
+  if (!files || typeof files !== 'object') return []
+  const values = Array.isArray(files) ? files : Object.values(files)
+  const names: string[] = []
+  for (const file of values) {
+    if (Array.isArray(file)) {
+      const name = String(file[0] ?? '').trim()
+      if (name) names.push(name)
+      continue
+    }
+    if (!file || typeof file !== 'object') continue
+    const name = String(file.name ?? '').trim()
+    if (name) names.push(name)
+  }
+  return names
+}
+
+function fileNamesFromComment(text: string): string[] {
+  const idx = text.indexOf(MAX_FILE_PREFIX)
+  if (idx < 0) return []
+  return text
+    .slice(idx + MAX_FILE_PREFIX.length)
+    .replace(/^:\s*/, '')
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+}
+
 /** Файлы из комментариев таймлайна с префиксом «Файл из MAX». */
 export function filesFromTimelineComments(comments: TimelineComment[]): DealFile[] {
   const out: DealFile[] = []
   for (const comment of comments) {
-    if (!String(comment.COMMENT ?? '').startsWith(MAX_FILE_PREFIX)) continue
-    const attached = comment.FILES
-    if (!attached || typeof attached !== 'object') continue
-    for (const file of Object.values(attached)) {
-      const name = String(file?.name ?? '').trim()
-      if (!name) continue
+    const text = String(comment.COMMENT ?? '').trim()
+    if (!text.includes(MAX_FILE_PREFIX)) continue
+    const created = String(comment.CREATED ?? '')
+    const names = fileNamesFromFilesField(comment.FILES)
+    const resolved = names.length ? names : fileNamesFromComment(text)
+    for (const name of resolved) {
       out.push({
-        id: `${comment.ID ?? '0'}:${file?.id ?? name}`,
+        id: `${comment.ID ?? '0'}:${name}`,
         name,
-        created: String(file?.date ?? comment.CREATED ?? ''),
+        created,
       })
     }
   }
