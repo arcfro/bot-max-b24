@@ -1,4 +1,4 @@
-import { formFromDeal, type DealForm } from '#shared/miniapp-deal'
+import { filesFromTimelineComments, formFromDeal, type DealFile, type DealForm } from '#shared/miniapp-deal'
 import { bitrixWebhookBase } from './max-bot'
 
 type BitrixResponse<T> = {
@@ -134,6 +134,24 @@ export async function getMaxDeal(webhook: string, dealId: string): Promise<{ id:
   return { id: form.id || dealId, title: form.title }
 }
 
+export async function getDealFiles(webhook: string, dealId: string): Promise<DealFile[]> {
+  const list = await bitrixCall<Array<{
+    ID?: string | number
+    CREATED?: string | null
+    COMMENT?: string | null
+    FILES?: Record<string, {
+      id?: string | number
+      name?: string | null
+      date?: string | null
+    }> | null
+  }>>(webhook, 'crm.timeline.comment.list', {
+    filter: { ENTITY_ID: asId(dealId), ENTITY_TYPE: 'deal' },
+    select: ['ID', 'CREATED', 'COMMENT', 'FILES'],
+    order: { CREATED: 'DESC' },
+  })
+  return filesFromTimelineComments(Array.isArray(list) ? list : [])
+}
+
 export async function getMaxDealForm(webhook: string, dealId: string): Promise<DealForm> {
   const deal = await bitrixCall<{
     ID?: string | number
@@ -144,28 +162,35 @@ export async function getMaxDealForm(webhook: string, dealId: string): Promise<D
     CONTACT_ID?: string | number | null
   }>(webhook, 'crm.deal.get', { id: asId(dealId) })
   const contactId = deal.CONTACT_ID
-  let client = ''
-  if (contactId != null && String(contactId) !== '' && String(contactId) !== '0') {
+  const clientPromise = (async () => {
+    if (contactId == null || String(contactId) === '' || String(contactId) === '0') return ''
     try {
       const contact = await bitrixCall<{ NAME?: string | null, LAST_NAME?: string | null }>(
         webhook,
         'crm.contact.get',
         { id: asId(String(contactId)) },
       )
-      client = [contact.NAME, contact.LAST_NAME].map(part => String(part ?? '').trim()).filter(Boolean).join(' ')
+      return [contact.NAME, contact.LAST_NAME].map(part => String(part ?? '').trim()).filter(Boolean).join(' ')
     }
     catch {
-      client = ''
+      return ''
     }
+  })()
+  const [client, files] = await Promise.all([
+    clientPromise,
+    getDealFiles(webhook, dealId),
+  ])
+  return {
+    ...formFromDeal({
+      id: deal.ID ?? dealId,
+      title: deal.TITLE,
+      opportunity: deal.OPPORTUNITY,
+      begin: deal.BEGINDATE,
+      close: deal.CLOSEDATE,
+      client,
+    }),
+    files,
   }
-  return formFromDeal({
-    id: deal.ID ?? dealId,
-    title: deal.TITLE,
-    opportunity: deal.OPPORTUNITY,
-    begin: deal.BEGINDATE,
-    close: deal.CLOSEDATE,
-    client,
-  })
 }
 
 export async function updateMaxDeal(

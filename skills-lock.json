@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "nuxtjs-vue-typescript": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "nuxtjs-vue-typescript/SKILL.md",
+      "computedHash": "7a9566a2293839327a98639eee2ac34ea3c84a40f09a666271e87fca4c36efd3"
+    }
+  }
+}
