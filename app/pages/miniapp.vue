@@ -83,7 +83,7 @@ let initData = ''
 let loadedId = ''
 let loadTimer: ReturnType<typeof setTimeout> | undefined
 
-watch(dealIdInput, (value) => {
+function queueDealLookup(value: string) {
   const id = parseDealIdInput(value)
   if (loadTimer) clearTimeout(loadTimer)
   looking.value = false
@@ -93,6 +93,11 @@ watch(dealIdInput, (value) => {
   }
   if (!ready.value || !id || id === loadedId) return
   loadTimer = setTimeout(() => openDeal(id), 300)
+}
+
+watch(dealIdInput, queueDealLookup)
+watch(ready, (isReady) => {
+  if (isReady) queueDealLookup(dealIdInput.value)
 })
 
 function navigationName(): string {
@@ -161,8 +166,12 @@ function showDeal(deal: DealResponse, fill: boolean) {
 
 let lookup = 0
 
+function inputDealId(): string | null {
+  return parseDealIdInput(dealIdInput.value)
+}
+
 async function openDeal(id: string) {
-  if (id !== dealIdInput.value.trim()) return
+  if (id !== inputDealId()) return
   const ticket = ++lookup
   looking.value = true
   error.value = ''
@@ -171,12 +180,12 @@ async function openDeal(id: string) {
       method: 'POST',
       body: { initData, id },
     })
-    if (ticket !== lookup || id !== dealIdInput.value.trim()) return
+    if (ticket !== lookup || id !== inputDealId()) return
     showDeal(deal, true)
     message.value = ''
   }
   catch (e: any) {
-    if (ticket !== lookup || id !== dealIdInput.value.trim()) return
+    if (ticket !== lookup || id !== inputDealId()) return
     const status = e?.statusCode || e?.status
     const text = String(e?.data?.statusMessage || e?.statusMessage || '')
     if (status === 404 || /not[_\s-]*found/i.test(text)) error.value = 'Сделка не найдена'
@@ -245,13 +254,8 @@ async function submit(forceNew = false) {
     if (forceNew) body.set('newDeal', '1')
     if (file.value) body.set('file', file.value)
     const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
-    showDeal({ ...deal, amount: '', begin: '', close: '', client: '' }, false)
+    showDeal(deal, true)
     message.value = deal.message || 'Записано'
-    title.value = ''
-    amount.value = ''
-    begin.value = ''
-    close.value = ''
-    clientName.value = ''
     file.value = null
     if (fileInput.value) fileInput.value.value = ''
   }

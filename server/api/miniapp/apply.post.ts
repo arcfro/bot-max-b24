@@ -10,7 +10,7 @@ import {
   createMaxDeal,
   findOrCreateMaxContact,
   findOrCreateNamedContact,
-  getMaxDeal,
+  getMaxDealForm,
   setDealClient,
   updateMaxDeal,
 } from '../../utils/bitrix-crm'
@@ -84,8 +84,8 @@ export default defineEventHandler(async (event) => {
     }
     if (!dealId) throw new Error(NO_DEAL)
     saveClient(user.userId, contactId, dealId)
-    const deal = await getMaxDeal(webhook, dealId)
-    return { id: deal.id, title: deal.title, message: lines.join('\n') || WRITTEN }
+    const deal = await getMaxDealForm(webhook, dealId)
+    return { ...deal, message: lines.join('\n') || WRITTEN }
   }
   catch (error) {
     const message = failureMessage(error, 'Ошибка')
