@@ -65,6 +65,26 @@ export function bitrixProbeUrl(webhook: string): string {
   return `${bitrixWebhookBase(webhook)}crm.deal.fields.json`
 }
 
+export function bitrixCategoryProbeUrl(webhook: string): string {
+  return `${bitrixWebhookBase(webhook)}crm.dealcategory.list.json`
+}
+
+export function bitrixStatusProbeUrl(webhook: string): string {
+  return `${bitrixWebhookBase(webhook)}crm.status.list.json`
+}
+
+export function resolveBitrixWebhooks(row: Pick<
+  MaxSettings,
+  'bitrixWebhookUrl' | 'bitrixCategoryWebhookUrl' | 'bitrixStatusWebhookUrl'
+>) {
+  const main = row.bitrixWebhookUrl
+  return {
+    main,
+    category: row.bitrixCategoryWebhookUrl || main,
+    status: row.bitrixStatusWebhookUrl || main,
+  }
+}
+
 export function bitrixWebhookHost(url: string | null | undefined): string | null {
   if (!url) return null
   try {
@@ -99,10 +119,17 @@ export function maxIntegrationStatus(
     | 'webhookUrl'
     | 'subscribedAt'
     | 'bitrixWebhookUrl'
+    | 'bitrixCategoryWebhookUrl'
+    | 'bitrixStatusWebhookUrl'
     | 'allowFromEnabled'
     | 'allowFrom'
   > | undefined,
-  errors?: { tokenError?: string | null, bitrixError?: string | null },
+  errors?: {
+    tokenError?: string | null
+    bitrixError?: string | null
+    bitrixCategoryError?: string | null
+    bitrixStatusError?: string | null
+  },
 ): MaxStatus {
   return {
     connected: Boolean(row?.botToken && row.subscribedAt),
@@ -111,10 +138,14 @@ export function maxIntegrationStatus(
     webhookUrl: row?.webhookUrl ?? null,
     subscribedAt: row?.subscribedAt ?? null,
     bitrixWebhookHost: bitrixWebhookHost(row?.bitrixWebhookUrl),
+    bitrixCategoryWebhookHost: bitrixWebhookHost(row?.bitrixCategoryWebhookUrl),
+    bitrixStatusWebhookHost: bitrixWebhookHost(row?.bitrixStatusWebhookUrl),
     allowlistEnabled: Boolean(row?.allowFromEnabled),
     allowFrom: row?.allowFrom ?? '',
     tokenError: errors?.tokenError ?? null,
     bitrixError: errors?.bitrixError ?? null,
+    bitrixCategoryError: errors?.bitrixCategoryError ?? null,
+    bitrixStatusError: errors?.bitrixStatusError ?? null,
   }
 }
 
@@ -234,6 +265,45 @@ type BitrixCall = {
   error_description?: string
 }
 
+async function verifyBitrixProbe(
+  webhook: string,
+  probeUrl: string,
+  body: Record<string, unknown>,
+  rejectLabel: string,
+) {
+  let res: Response
+  try {
+    res = await fetch(probeUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    })
+  }
+  catch (error) {
+    throw createError({
+      statusCode: 502,
+      statusMessage: `Не удалось связаться с Битрикс24: ${maxTransportError(error)}`,
+    })
+  }
+
+  const text = await res.text()
+  let parsed: BitrixCall = {}
+  try {
+    parsed = JSON.parse(text) as BitrixCall
+  }
+  catch {
+    // не JSON
+  }
+  if (!res.ok || parsed.error || parsed.result === undefined) {
+    const detail = parsed.error_description || parsed.error
+    throw createError({
+      statusCode: 400,
+      statusMessage: detail ? `${rejectLabel}: ${detail}` : rejectLabel,
+    })
+  }
+}
+
 /** Входящий вебхук живой, если crm.deal.fields возвращает result. Сделку не создаёт. */
 export async function verifyBitrixWebhook(webhook: string) {
   let res: Response
@@ -264,6 +334,31 @@ export async function verifyBitrixWebhook(webhook: string) {
         : 'Вебхук Битрикс24 не принят',
     })
   }
+}
+
+export async function verifyBitrixCategoryWebhook(webhook: string) {
+  await verifyBitrixProbe(
+    webhook,
+    bitrixCategoryProbeUrl(webhook),
+    {
+      order: { SORT: 'ASC' },
+      filter: { IS_LOCKED: 'N' },
+      select: ['ID', 'NAME'],
+    },
+    'Вебхук crm.dealcategory.list не принят',
+  )
+}
+
+export async function verifyBitrixStatusWebhook(webhook: string) {
+  await verifyBitrixProbe(
+    webhook,
+    bitrixStatusProbeUrl(webhook),
+    {
+      order: { SORT: 'ASC' },
+      filter: { ENTITY_ID: 'DEAL_STAGE' },
+    },
+    'Вебхук crm.status.list не принят',
+  )
 }
 
 export async function fetchMaxBot(token: string) {

@@ -4,6 +4,16 @@ export type DealFile = {
   created: string
 }
 
+export type DealCategory = {
+  id: string
+  name: string
+}
+
+export type DealStage = {
+  id: string
+  name: string
+}
+
 export type DealForm = {
   id: string | null
   title: string
@@ -11,6 +21,8 @@ export type DealForm = {
   begin: string
   close: string
   client: string
+  categoryId: string | null
+  stageId: string | null
   files: DealFile[]
 }
 
@@ -42,6 +54,8 @@ const empty: DealForm = {
   begin: '',
   close: '',
   client: '',
+  categoryId: null,
+  stageId: null,
   files: [],
 }
 
@@ -53,6 +67,8 @@ export function formFromDeal(deal: {
   begin?: string | null
   close?: string | null
   client?: string | null
+  categoryId?: string | number | null
+  stageId?: string | null
 } | null): DealForm {
   if (!deal || deal.id == null || deal.id === '') return { ...empty }
   return {
@@ -62,6 +78,12 @@ export function formFromDeal(deal: {
     begin: dateInput(deal.begin),
     close: dateInput(deal.close),
     client: String(deal.client ?? '').trim(),
+    categoryId: deal.categoryId != null && String(deal.categoryId) !== ''
+      ? String(deal.categoryId)
+      : '0',
+    stageId: deal.stageId != null && String(deal.stageId).trim() !== ''
+      ? String(deal.stageId)
+      : null,
     files: [],
   }
 }

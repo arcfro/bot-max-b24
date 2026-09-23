@@ -10,6 +10,8 @@ describe('formFromDeal', () => {
       begin: '2026-09-23T03:00:00+03:00',
       close: '2026-10-01',
       client: 'Сидоров С.С.',
+      categoryId: 9,
+      stageId: 'PREPARATION',
     })).toEqual({
       id: '12',
       title: 'Скважина',
@@ -17,6 +19,8 @@ describe('formFromDeal', () => {
       begin: '2026-09-23',
       close: '2026-10-01',
       client: 'Сидоров С.С.',
+      categoryId: '9',
+      stageId: 'PREPARATION',
       files: [],
     })
   })
@@ -29,6 +33,8 @@ describe('formFromDeal', () => {
       begin: '',
       close: '',
       client: '',
+      categoryId: null,
+      stageId: null,
       files: [],
     })
   })

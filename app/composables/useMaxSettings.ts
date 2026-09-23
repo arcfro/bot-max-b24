@@ -3,6 +3,8 @@ import type { MaxStatus } from '#shared/max-status'
 export function useMaxSettings() {
   const maxToken = ref('')
   const bitrixWebhook = ref('')
+  const bitrixCategoryWebhook = ref('')
+  const bitrixStatusWebhook = ref('')
   const maxPending = ref(false)
   const maxErrors = ref<string[]>([])
   const allowFrom = ref('')
@@ -60,18 +62,29 @@ export function useMaxSettings() {
     maxPending.value = true
     const sentToken = maxToken.value.trim()
     const sentBitrix = bitrixWebhook.value.trim()
+    const sentBitrixCategory = bitrixCategoryWebhook.value.trim()
+    const sentBitrixStatus = bitrixStatusWebhook.value.trim()
     try {
       const res = await $fetch<MaxStatus>('/api/settings/max', {
         method: 'POST',
         body: {
           token: sentToken,
           bitrixWebhook: sentBitrix,
+          bitrixCategoryWebhook: sentBitrixCategory,
+          bitrixStatusWebhook: sentBitrixStatus,
         },
       })
       maxStatus.value = res
       if (sentToken && !res.tokenError) maxToken.value = ''
       if (sentBitrix && !res.bitrixError) bitrixWebhook.value = ''
-      maxErrors.value = [res.tokenError, res.bitrixError].filter((line): line is string => !!line)
+      if (sentBitrixCategory && !res.bitrixCategoryError) bitrixCategoryWebhook.value = ''
+      if (sentBitrixStatus && !res.bitrixStatusError) bitrixStatusWebhook.value = ''
+      maxErrors.value = [
+        res.tokenError,
+        res.bitrixError,
+        res.bitrixCategoryError,
+        res.bitrixStatusError,
+      ].filter((line): line is string => !!line)
     }
     catch (e: unknown) {
       maxErrors.value = [apiErrorMessage(e, 'Не удалось подключить')]
@@ -84,6 +97,8 @@ export function useMaxSettings() {
   return {
     maxToken,
     bitrixWebhook,
+    bitrixCategoryWebhook,
+    bitrixStatusWebhook,
     maxStatus,
     maxPending,
     maxErrors,

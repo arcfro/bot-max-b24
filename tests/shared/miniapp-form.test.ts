@@ -8,6 +8,8 @@ const empty = {
   begin: '',
   close: '',
   client: '',
+  categoryId: '',
+  loadedCategoryId: '',
   hasFile: false,
 }
 
@@ -79,6 +81,26 @@ describe('planMiniappForm', () => {
   it('does not write anything when a field is invalid', () => {
     expect(planMiniappForm({ ...empty, title: 'Объект', amount: 'нет' }, false)).toEqual({
       error: 'Сумма должна быть числом',
+    })
+  })
+
+  it('creates and moves deals between categories', () => {
+    expect(planMiniappForm({ ...empty, title: 'Объект', categoryId: '9' }, false)).toEqual({
+      create: { title: 'Объект', categoryId: '9' },
+    })
+    expect(planMiniappForm({
+      ...empty,
+      categoryId: '10',
+      loadedCategoryId: '0',
+    }, true)).toEqual({
+      patch: { categoryId: '10' },
+    })
+    expect(planMiniappForm({
+      ...empty,
+      categoryId: '0',
+      loadedCategoryId: '0',
+    }, true)).toEqual({
+      error: 'Нечего записывать',
     })
   })
 })

@@ -2,8 +2,10 @@ import {
   filesFromTimelineComments,
   formFromDeal,
   parseDealFileId,
+  type DealCategory,
   type DealFile,
   type DealForm,
+  type DealStage,
 } from '#shared/miniapp-deal'
 import { bitrixWebhookBase } from './max-bot'
 
@@ -84,15 +86,105 @@ export async function findOrCreateMaxContact(webhook: string, userId: string, na
   return String(id)
 }
 
+const DEAL_ENTITY_TYPE_ID = 2
+
+function stageEntityId(categoryId: string): string {
+  const id = Number(categoryId)
+  return Number.isFinite(id) && id > 0 ? `DEAL_STAGE_${id}` : 'DEAL_STAGE'
+}
+
+async function listDealCategoriesModern(webhook: string): Promise<DealCategory[]> {
+  const data = await bitrixCall<{
+    categories?: Array<{ id?: number | string, name?: string | null }>
+  }>(webhook, 'crm.category.list', { entityTypeId: DEAL_ENTITY_TYPE_ID })
+  const list = data.categories ?? []
+  return list
+    .map(row => ({
+      id: String(row.id ?? ''),
+      name: String(row.name ?? '').trim() || `Воронка ${row.id ?? ''}`,
+    }))
+    .sort((a, b) => Number(a.id) - Number(b.id))
+}
+
+async function listDealCategoriesLegacy(webhook: string): Promise<DealCategory[]> {
+  const rows = await bitrixCall<Array<{ ID?: number | string, NAME?: string | null }>>(
+    webhook,
+    'crm.dealcategory.list',
+    {
+      order: { SORT: 'ASC' },
+      filter: { IS_LOCKED: 'N' },
+      select: ['ID', 'NAME'],
+    },
+  )
+  const list = Array.isArray(rows) ? rows : []
+  return list
+    .map(row => ({
+      id: String(row.ID ?? ''),
+      name: String(row.NAME ?? '').trim() || `Воронка ${row.ID ?? ''}`,
+    }))
+    .sort((a, b) => Number(a.id) - Number(b.id))
+}
+
+/** Список воронок. Отдельный вебхук проверяется через crm.dealcategory.list. */
+export async function listDealCategories(webhook: string, preferLegacy = false): Promise<DealCategory[]> {
+  if (preferLegacy) return listDealCategoriesLegacy(webhook)
+  try {
+    return await listDealCategoriesModern(webhook)
+  }
+  catch {
+    return listDealCategoriesLegacy(webhook)
+  }
+}
+
+export async function listDealStages(webhook: string, categoryId: string): Promise<DealStage[]> {
+  const rows = await bitrixCall<Array<{
+    STATUS_ID?: string
+    NAME?: string | null
+  }>>(webhook, 'crm.status.list', {
+    order: { SORT: 'ASC' },
+    filter: { ENTITY_ID: stageEntityId(categoryId) },
+  })
+  const list = Array.isArray(rows) ? rows : []
+  return list
+    .filter(row => row.STATUS_ID)
+    .map(row => ({
+      id: String(row.STATUS_ID),
+      name: String(row.NAME ?? '').trim() || String(row.STATUS_ID),
+    }))
+}
+
+export async function firstProcessStage(webhook: string, categoryId: string): Promise<string> {
+  const rows = await bitrixCall<Array<{
+    STATUS_ID?: string
+    EXTRA?: { SEMANTICS?: string | null }
+  }>>(webhook, 'crm.status.list', {
+    order: { SORT: 'ASC' },
+    filter: { ENTITY_ID: stageEntityId(categoryId) },
+  })
+  const list = Array.isArray(rows) ? rows : []
+  const process = list.find(stage => stage.EXTRA?.SEMANTICS === 'process')
+  const stageId = process?.STATUS_ID ?? list[0]?.STATUS_ID
+  if (!stageId) throw new Error('Нет стадий в воронке')
+  return stageId
+}
+
+type BitrixDealHooks = { statusWebhook?: string }
+
 export async function createMaxDeal(
   webhook: string,
-  input: { contactId: string, title: string, opportunity?: number },
+  input: { contactId: string, title: string, opportunity?: number, categoryId?: string },
+  hooks?: BitrixDealHooks,
 ): Promise<string> {
+  const statusWebhook = hooks?.statusWebhook ?? webhook
   const fields: Record<string, unknown> = {
     TITLE: input.title.slice(0, 255),
     CONTACT_ID: asId(input.contactId),
   }
   if (input.opportunity != null) fields.OPPORTUNITY = input.opportunity
+  if (input.categoryId != null && input.categoryId !== '') {
+    fields.CATEGORY_ID = Number(input.categoryId)
+    fields.STAGE_ID = await firstProcessStage(statusWebhook, input.categoryId)
+  }
   const id = await bitrixCall<number | string>(webhook, 'crm.deal.add', { fields })
   return String(id)
 }
@@ -177,6 +269,8 @@ export async function getMaxDealForm(webhook: string, dealId: string): Promise<D
     BEGINDATE?: string | null
     CLOSEDATE?: string | null
     CONTACT_ID?: string | number | null
+    CATEGORY_ID?: string | number | null
+    STAGE_ID?: string | null
   }>(webhook, 'crm.deal.get', { id: asId(dealId) })
   const contactId = deal.CONTACT_ID
   const clientPromise = (async () => {
@@ -205,6 +299,8 @@ export async function getMaxDealForm(webhook: string, dealId: string): Promise<D
       begin: deal.BEGINDATE,
       close: deal.CLOSEDATE,
       client,
+      categoryId: deal.CATEGORY_ID,
+      stageId: deal.STAGE_ID,
     }),
     files,
   }
@@ -213,13 +309,29 @@ export async function getMaxDealForm(webhook: string, dealId: string): Promise<D
 export async function updateMaxDeal(
   webhook: string,
   dealId: string,
-  patch: { title?: string, opportunity?: number, begin?: string, close?: string },
+  patch: {
+    title?: string
+    opportunity?: number
+    begin?: string
+    close?: string
+    categoryId?: string
+    stageId?: string
+  },
+  hooks?: BitrixDealHooks,
 ) {
+  const statusWebhook = hooks?.statusWebhook ?? webhook
   const fields: Record<string, unknown> = {}
   if (patch.title) fields.TITLE = patch.title.slice(0, 255)
   if (patch.opportunity != null) fields.OPPORTUNITY = patch.opportunity
   if (patch.begin) fields.BEGINDATE = patch.begin
   if (patch.close) fields.CLOSEDATE = patch.close
+  if (patch.categoryId != null) {
+    fields.CATEGORY_ID = Number(patch.categoryId)
+    fields.STAGE_ID = await firstProcessStage(statusWebhook, patch.categoryId)
+  }
+  else if (patch.stageId != null) {
+    fields.STAGE_ID = patch.stageId
+  }
   await bitrixCall(webhook, 'crm.deal.update', { id: asId(dealId), fields })
 }
 

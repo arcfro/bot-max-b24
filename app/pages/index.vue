@@ -35,10 +35,32 @@
           :placeholder="maxStatus?.bitrixWebhookHost ? 'сохранён — введите новый, чтобы заменить' : 'https://портал.bitrix24.ru/rest/1/код/'"
         />
       </label>
+      <label>
+        <span class="check-line">
+          Вебхук crm.dealcategory.list
+          <span v-if="maxStatus?.bitrixCategoryWebhookHost" class="ok-mark" title="Вебхук проверен">✓</span>
+        </span>
+        <PasswordInput
+          v-model="bitrixCategoryWebhook"
+          autocomplete="off"
+          :placeholder="maxStatus?.bitrixCategoryWebhookHost ? 'сохранён — введите новый, чтобы заменить' : 'для списка воронок в миниаппе'"
+        />
+      </label>
+      <label>
+        <span class="check-line">
+          Вебхук crm.status.list
+          <span v-if="maxStatus?.bitrixStatusWebhookHost" class="ok-mark" title="Вебхук проверен">✓</span>
+        </span>
+        <PasswordInput
+          v-model="bitrixStatusWebhook"
+          autocomplete="off"
+          :placeholder="maxStatus?.bitrixStatusWebhookHost ? 'сохранён — введите новый, чтобы заменить' : 'для стадий сделок в миниаппе'"
+        />
+      </label>
       <div class="nav" style="align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <button
           type="button"
-          :disabled="maxPending || (!maxToken.trim() && !bitrixWebhook.trim())"
+          :disabled="maxPending || (!maxToken.trim() && !bitrixWebhook.trim() && !bitrixCategoryWebhook.trim() && !bitrixStatusWebhook.trim())"
           @click="connectMax"
         >
           {{ maxPending ? 'Подключение…' : 'Подключить' }}
@@ -82,6 +104,8 @@
       <p v-if="allowError" class="error" style="margin: 0;">{{ allowError }}</p>
       <p v-if="maxStatus?.webhookUrl" class="mono muted" style="margin: 0;">{{ maxStatus.webhookUrl }}</p>
       <p v-if="maxStatus?.bitrixWebhookHost" class="mono muted" style="margin: 0;">Битрикс24: {{ maxStatus.bitrixWebhookHost }}</p>
+      <p v-if="maxStatus?.bitrixCategoryWebhookHost" class="mono muted" style="margin: 0;">crm.dealcategory.list: {{ maxStatus.bitrixCategoryWebhookHost }}</p>
+      <p v-if="maxStatus?.bitrixStatusWebhookHost" class="mono muted" style="margin: 0;">crm.status.list: {{ maxStatus.bitrixStatusWebhookHost }}</p>
       <p v-for="(line, i) in maxErrors" :key="i" class="error" style="margin: 0;">{{ line }}</p>
       <p v-if="loadError" class="error" style="margin: 0;">{{ loadError }}</p>
     </div>
@@ -95,6 +119,8 @@ const { clear: clearSession } = useUserSession()
 const {
   maxToken,
   bitrixWebhook,
+  bitrixCategoryWebhook,
+  bitrixStatusWebhook,
   maxStatus,
   maxPending,
   maxErrors,

@@ -12,6 +12,8 @@ import {
   maxIntegrationStatus,
   maxWebhookUrl,
   subscribeMaxBot,
+  verifyBitrixCategoryWebhook,
+  verifyBitrixStatusWebhook,
   verifyBitrixWebhook,
 } from '../../utils/max-bot'
 import { requireAdmin } from '../../utils/require-admin'
@@ -21,14 +23,18 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{
     token?: string
     bitrixWebhook?: string
+    bitrixCategoryWebhook?: string
+    bitrixStatusWebhook?: string
     allowFrom?: string
     allowlistEnabled?: boolean
   }>(event)
   const incomingToken = String(body?.token || '').trim()
   const incomingBitrix = String(body?.bitrixWebhook || '').trim()
+  const incomingBitrixCategory = String(body?.bitrixCategoryWebhook || '').trim()
+  const incomingBitrixStatus = String(body?.bitrixStatusWebhook || '').trim()
   const saveAllowlist = !!body && Object.prototype.hasOwnProperty.call(body, 'allowFrom')
-  if (!incomingToken && !incomingBitrix && !saveAllowlist) {
-    throw createError({ statusCode: 400, statusMessage: 'Вставьте токен бота или вебхук Битрикс24' })
+  if (!incomingToken && !incomingBitrix && !incomingBitrixCategory && !incomingBitrixStatus && !saveAllowlist) {
+    throw createError({ statusCode: 400, statusMessage: 'Заполните хотя бы одно поле для сохранения' })
   }
   const allowPatch = saveAllowlist
     ? {
@@ -40,6 +46,8 @@ export default defineEventHandler(async (event) => {
   const existing = getMaxIntegration()
   let tokenError: string | null = null
   let bitrixError: string | null = null
+  let bitrixCategoryError: string | null = null
+  let bitrixStatusError: string | null = null
   let tokenPatch: {
     botToken: string
     webhookSecret: string
@@ -49,6 +57,8 @@ export default defineEventHandler(async (event) => {
     subscribedAt: number
   } | null = null
   let bitrixPatch: string | null = null
+  let bitrixCategoryPatch: string | null = null
+  let bitrixStatusPatch: string | null = null
 
   const jobs: Promise<void>[] = []
 
@@ -100,15 +110,56 @@ export default defineEventHandler(async (event) => {
     })())
   }
 
+  if (incomingBitrixCategory) {
+    jobs.push((async () => {
+      const problem = bitrixWebhookProblem(incomingBitrixCategory)
+      if (problem) {
+        bitrixCategoryError = problem
+        return
+      }
+      try {
+        await verifyBitrixCategoryWebhook(incomingBitrixCategory)
+        bitrixCategoryPatch = bitrixWebhookBase(incomingBitrixCategory)
+      }
+      catch (error) {
+        bitrixCategoryError = failureMessage(error, 'Вебхук crm.dealcategory.list не принят')
+      }
+    })())
+  }
+
+  if (incomingBitrixStatus) {
+    jobs.push((async () => {
+      const problem = bitrixWebhookProblem(incomingBitrixStatus)
+      if (problem) {
+        bitrixStatusError = problem
+        return
+      }
+      try {
+        await verifyBitrixStatusWebhook(incomingBitrixStatus)
+        bitrixStatusPatch = bitrixWebhookBase(incomingBitrixStatus)
+      }
+      catch (error) {
+        bitrixStatusError = failureMessage(error, 'Вебхук crm.status.list не принят')
+      }
+    })())
+  }
+
   await Promise.all(jobs)
 
-  if (tokenPatch || bitrixPatch || allowPatch) {
+  if (tokenPatch || bitrixPatch || bitrixCategoryPatch || bitrixStatusPatch || allowPatch) {
     saveSettings({
       ...(tokenPatch ?? {}),
       ...(bitrixPatch ? { bitrixWebhookUrl: bitrixPatch } : {}),
+      ...(bitrixCategoryPatch ? { bitrixCategoryWebhookUrl: bitrixCategoryPatch } : {}),
+      ...(bitrixStatusPatch ? { bitrixStatusWebhookUrl: bitrixStatusPatch } : {}),
       ...(allowPatch ?? {}),
     })
   }
 
-  return maxIntegrationStatus(getMaxIntegration(), { tokenError, bitrixError })
+  return maxIntegrationStatus(getMaxIntegration(), {
+    tokenError,
+    bitrixError,
+    bitrixCategoryError,
+    bitrixStatusError,
+  })
 })

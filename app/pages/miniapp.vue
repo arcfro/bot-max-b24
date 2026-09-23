@@ -13,6 +13,18 @@
       <p class="mono" style="margin: 0;">№:{{ dealId || '—' }}</p>
       <h1>{{ dealTitle || 'Нет активной сделки' }}</h1>
     </header>
+    <label v-if="dealId && stages.length" class="stage-bar">
+      Стадия
+      <select
+        v-model="stageId"
+        :disabled="pending || looking || !ready"
+        @change="changeStage"
+      >
+        <option v-for="stage in stages" :key="stage.id" :value="stage.id">
+          {{ stage.name }}
+        </option>
+      </select>
+    </label>
     <form class="card stack" @submit.prevent="submit()">
       <label>
         ID сделки
@@ -72,6 +84,14 @@
       <button type="submit" :disabled="pending || looking || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
       </button>
+      <label v-if="categories.length">
+        Воронка
+        <select v-model="categoryId" :disabled="pending || looking || !ready">
+          <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+            {{ cat.name }}
+          </option>
+        </select>
+      </label>
       <button
         v-if="dealId"
         class="secondary"
@@ -102,6 +122,10 @@ const {
   fileInput,
   fileLabel,
   files,
+  categories,
+  categoryId,
+  stages,
+  stageId,
   pending,
   looking,
   deletingFileId,
@@ -112,6 +136,7 @@ const {
   pickFile,
   onFile,
   deleteFile,
+  changeStage,
   submit,
 } = useMiniappDeal(initData, ready)
 
@@ -184,6 +209,16 @@ onUnmounted(() => {
 h1 {
   font-size: 1.35rem;
   margin: 0.2rem 0 0;
+}
+
+.stage-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stage-bar select {
+  width: 100%;
 }
 
 button {

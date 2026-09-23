@@ -5,8 +5,12 @@ export type MaxStatus = {
   webhookUrl: string | null
   subscribedAt: number | null
   bitrixWebhookHost: string | null
+  bitrixCategoryWebhookHost: string | null
+  bitrixStatusWebhookHost: string | null
   allowlistEnabled: boolean
   allowFrom: string
   tokenError: string | null
   bitrixError: string | null
+  bitrixCategoryError: string | null
+  bitrixStatusError: string | null
 }

@@ -15,7 +15,7 @@ import {
   updateMaxDeal,
 } from '../../utils/bitrix-crm'
 import { clearDeal, getClient, saveClient } from '../../utils/json-store'
-import { failureMessage } from '../../utils/max-bot'
+import { failureMessage, resolveBitrixWebhooks } from '../../utils/max-bot'
 import { requireMiniappUser } from '../../utils/miniapp-session'
 
 const FILE_LIMIT = 20 * 1024 * 1024
@@ -33,7 +33,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const { user, row } = requireMiniappUser(text('initData'))
-  if (!row.bitrixWebhookUrl) {
+  const hooks = resolveBitrixWebhooks(row)
+  if (!hooks.main) {
     throw createError({ statusCode: 400, statusMessage: 'Битрикс24 не подключён' })
   }
 
@@ -45,11 +46,14 @@ export default defineEventHandler(async (event) => {
     begin: text('begin'),
     close: text('close'),
     client: text('client'),
+    categoryId: text('categoryId'),
+    loadedCategoryId: text('loadedCategoryId'),
     hasFile: Boolean(filePart),
   }, Boolean(client?.dealId), forceNew)
   if (plan.error) throw createError({ statusCode: 400, statusMessage: plan.error })
 
-  const webhook = row.bitrixWebhookUrl
+  const webhook = hooks.main
+  const crmHooks = { statusWebhook: hooks.status ?? webhook }
   const lines: string[] = []
   let dealId = client?.dealId ?? null
   try {
@@ -59,13 +63,14 @@ export default defineEventHandler(async (event) => {
         contactId,
         title: plan.create.title,
         opportunity: plan.create.opportunity,
-      })
+        categoryId: plan.create.categoryId,
+      }, crmHooks)
       saveClient(user.userId, contactId, dealId)
       lines.push(text('title').trim() ? dealCreatedReply(dealId) : WRITTEN)
     }
     if (plan.patch) {
       if (!dealId) throw new Error(NO_DEAL)
-      await updateMaxDeal(webhook, dealId, plan.patch)
+      await updateMaxDeal(webhook, dealId, plan.patch, crmHooks)
       if (!lines.includes(WRITTEN)) lines.push(WRITTEN)
     }
     if (plan.client) {

@@ -8,6 +8,8 @@ export type MaxSettings = {
   botUserId: number | null
   botName: string | null
   bitrixWebhookUrl: string | null
+  bitrixCategoryWebhookUrl: string | null
+  bitrixStatusWebhookUrl: string | null
   allowFromEnabled: boolean
   allowFrom: string
   subscribedAt: number | null
@@ -60,6 +62,8 @@ function defaultSettings(): MaxSettings {
     botUserId: null,
     botName: null,
     bitrixWebhookUrl: null,
+    bitrixCategoryWebhookUrl: null,
+    bitrixStatusWebhookUrl: null,
     allowFromEnabled: false,
     allowFrom: '',
     subscribedAt: null,
