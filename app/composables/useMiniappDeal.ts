@@ -183,6 +183,8 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
 
   async function deleteFile(fileId: string) {
     if (!dealId.value || pending.value || looking.value || deletingFileId.value) return
+    const name = files.value.find(file => file.id === fileId)?.name ?? 'файл'
+    if (!confirm(`Удалить «${name}» из сделки?`)) return
     error.value = ''
     message.value = ''
     deletingFileId.value = fileId
