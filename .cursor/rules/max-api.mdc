@@ -1,0 +1,11 @@
+---
+description: Актуальная документация MAX Bot API через Context7
+alwaysApply: true
+---
+
+При любом коде или вопросе про MAX Bot API (platform-api.max.ru, webhook, сообщения, чаты, подписки, вложения) сначала вызови MCP context7 `query-docs`:
+
+- libraryId: `/websites/dev_max_ru_docs-api`
+- resolve-library-id не вызывай, id фиксированный
+
+Сигнатуры методов, поля апдейтов и заголовок Authorization бери из ответа Context7, не из памяти.

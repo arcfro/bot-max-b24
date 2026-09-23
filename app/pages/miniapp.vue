@@ -35,7 +35,23 @@
       </label>
       <label>
         Файл
-        <input ref="fileInput" type="file" :disabled="pending || looking" @change="onFile">
+        <span class="file-row">
+          <input
+            ref="fileInput"
+            class="file-input-hidden"
+            type="file"
+            :disabled="pending || looking || !ready"
+            @change="onFile"
+          >
+          <button
+            type="button"
+            class="secondary file-btn"
+            :disabled="pending || looking || !ready"
+            @click="pickFile"
+          >
+            {{ fileLabel }}
+          </button>
+        </span>
       </label>
       <button type="submit" :disabled="pending || looking || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
@@ -55,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import { BAD_ID } from '#shared/max-commands'
+import { BAD_ID, NO_DEAL } from '#shared/max-commands'
 import type { DealForm } from '#shared/miniapp-deal'
 import { parseDealIdInput } from '#shared/miniapp-id'
 import { MINIAPP_LAUNCH_KEY, readLaunchInitData } from '#shared/miniapp-launch'
@@ -73,8 +89,8 @@ const amount = ref('')
 const begin = ref('')
 const close = ref('')
 const clientName = ref('')
-const file = ref<File | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const fileLabel = ref('Выбрать файл')
 const pending = ref(false)
 const looking = ref(false)
 const ready = ref(false)
@@ -279,9 +295,49 @@ async function loadDeal(retry = true) {
   }
 }
 
-function onFile(event: Event) {
+function resetFileInput() {
+  fileLabel.value = 'Выбрать файл'
+  if (fileInput.value) fileInput.value.value = ''
+}
+
+function pickFile() {
+  if (pending.value || looking.value || !ready.value) return
+  fileInput.value?.click()
+}
+
+async function onFile(event: Event) {
   const input = event.target as HTMLInputElement
-  file.value = input.files?.[0] ?? null
+  const picked = input.files?.[0]
+  if (!picked) return
+  if (!dealId.value) {
+    error.value = NO_DEAL
+    resetFileInput()
+    return
+  }
+  fileLabel.value = picked.name
+  await uploadFile(picked)
+}
+
+async function uploadFile(picked: File) {
+  error.value = ''
+  message.value = ''
+  pending.value = true
+  try {
+    const body = new FormData()
+    body.set('initData', initData)
+    body.set('file', picked)
+    const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
+    showDeal(deal, true)
+    message.value = deal.message || 'Файл прикреплён'
+    resetFileInput()
+  }
+  catch (e: any) {
+    fail(e, 'Не удалось прикрепить файл')
+    resetFileInput()
+  }
+  finally {
+    pending.value = false
+  }
 }
 
 async function submit(forceNew = false) {
@@ -297,12 +353,9 @@ async function submit(forceNew = false) {
     body.set('close', close.value)
     body.set('client', clientName.value)
     if (forceNew) body.set('newDeal', '1')
-    if (file.value) body.set('file', file.value)
     const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
     showDeal(deal, true)
     message.value = deal.message || 'Записано'
-    file.value = null
-    if (fileInput.value) fileInput.value.value = ''
   }
   catch (e: any) {
     fail(e, 'Не удалось записать')
@@ -317,6 +370,7 @@ function onVisible() {
 }
 
 onMounted(() => {
+  ;(window as Window & { WebApp?: { ready?: () => void } }).WebApp?.ready?.()
   loadDeal()
   pollTimer = setInterval(syncRevision, 2500)
   document.addEventListener('visibilitychange', onVisible)
@@ -360,5 +414,27 @@ button {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.file-row {
+  display: flex;
+}
+
+.file-btn {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
 }
 </style>
