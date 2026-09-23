@@ -8,6 +8,17 @@ export type MaxInitUser = {
   username: string | null
 }
 
+/** Короткий код, почему initData не принят. Пустая строка — подпись сошлась. */
+export function maxInitFailure(initData: string, botToken: string, nowSec: number): string {
+  const raw = initData.trim()
+  const keys = raw.split('&').map(part => part.slice(0, part.indexOf('='))).filter(Boolean)
+  if (readMaxInitData(raw, botToken, nowSec)) return ''
+  if (!keys.includes('hash') || !keys.includes('auth_date') || !keys.includes('user')) return keys.join(',') || 'empty'
+  const authDate = Number(new URLSearchParams(raw).get('auth_date'))
+  if (!Number.isFinite(authDate) || nowSec - authDate > MAX_AGE_SEC || authDate > nowSec + 60) return 'age'
+  return 'sig'
+}
+
 /** Проверяет window.WebApp.initData. null — подпись, срок или user не сходятся. */
 export function readMaxInitData(initData: string, botToken: string, nowSec: number): MaxInitUser | null {
   const raw = initData.trim()

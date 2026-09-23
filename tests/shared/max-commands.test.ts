@@ -8,6 +8,7 @@ import {
   UNKNOWN_COMMAND,
   WRITTEN,
   dealCreatedReply,
+  dealFieldsReply,
   withDealId,
   maxSenderAllowed,
   parseMaxAllowList,
@@ -24,8 +25,31 @@ describe('planMaxMessage', () => {
     expect(MAX_HELP).toMatch(/Дата начала:/)
     expect(MAX_HELP).toMatch(/Дата завершения:/)
     expect(MAX_HELP).toMatch(/Клиент:/)
+    expect(MAX_HELP).toMatch(/ID:/)
     expect(MAX_WELCOME.startsWith('Здравствуйте.')).toBe(true)
     expect(MAX_WELCOME).toContain(MAX_HELP)
+  })
+
+  it('opens a deal by ID: and shows its fields', () => {
+    expect(planMaxMessage('ID: 14', false, true)).toEqual({ open: { id: '14' } })
+    expect(planMaxMessage('id:14', false, false)).toEqual({ open: { id: '14' } })
+    expect(planMaxMessage('ID:', false, true)).toEqual({ replyNow: 'ID сделки — число' })
+    expect(planMaxMessage('ID: нет', false, true)).toEqual({ replyNow: 'ID сделки — число' })
+    expect(dealFieldsReply({
+      id: '14',
+      title: 'Скважина',
+      amount: '50000',
+      begin: '2026-09-23',
+      close: '2026-09-30',
+      client: 'Иван',
+    })).toBe([
+      '№:14',
+      'Н: Скважина',
+      'С: 50000',
+      'Дн: 23.09.2026',
+      'Дз: 30.09.2026',
+      'К: Иван',
+    ].join('\n'))
   })
 
   it('creates a deal from Н: and Новая:, case-insensitive', () => {

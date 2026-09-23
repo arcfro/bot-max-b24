@@ -5,6 +5,7 @@ export const MAX_HELP = [
   'Дн: или Д1: или Дата начала: ДД.ММ.ГГГГ',
   'Дз: или Д2: или Дата завершения: ДД.ММ.ГГГГ',
   'К: или Клиент: имя — клиент сделки, контакт создаётся если его нет',
+  'ID: число — открыть сделку и показать поля',
   'Файл — прикрепить к текущей сделке',
   '? или / — эта подсказка',
 ].join('\n')
@@ -19,9 +20,35 @@ export const EMPTY_TITLE = 'Пустое название'
 export const EMPTY_CLIENT = 'Пустое имя клиента'
 export const BAD_AMOUNT = 'Сумма должна быть числом'
 export const BAD_DATE = 'Дата должна быть в виде ДД.ММ.ГГГГ'
+export const BAD_ID = 'ID сделки — число'
 
 export function dealCreatedReply(id: string | number): string {
   return `Сделка создана №:${id}`
+}
+
+/** Поля открытой сделки в том же виде, что команды. */
+export function dealFieldsReply(form: {
+  id: string | null
+  title: string
+  amount: string
+  begin: string
+  close: string
+  client: string
+}): string {
+  return [
+    `№:${form.id ?? ''}`,
+    `Н: ${form.title}`,
+    `С: ${form.amount}`,
+    `Дн: ${isoToRu(form.begin)}`,
+    `Дз: ${isoToRu(form.close)}`,
+    `К: ${form.client}`,
+  ].join('\n')
+}
+
+function isoToRu(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+  if (!match) return iso
+  return `${match[3]}.${match[2]}.${match[1]}`
 }
 
 /** Дописывает № сделки, если в тексте его ещё нет. */
@@ -34,6 +61,7 @@ export function withDealId(text: string, id: string | number | null | undefined)
 
 type Plan = {
   replyNow?: string
+  open?: { id: string }
   create?: { title: string, opportunity?: number, reply: 'created' | 'written' }
   patch?: { opportunity?: number, begin?: string, close?: string }
   client?: { name: string }
@@ -54,6 +82,7 @@ const COMMANDS = [
   { prefix: 'н:', kind: 'new' },
   { prefix: 'к:', kind: 'client' },
   { prefix: 'с:', kind: 'amount' },
+  { prefix: 'id:', kind: 'open' },
 ] as const
 
 /** Что сделать с текстом MAX. `hasDeal` — есть запомненная сделка этого пользователя. */
@@ -66,6 +95,9 @@ export function planMaxMessage(text: string, hasFiles: boolean, hasDeal: boolean
   const command = matchCommand(trimmed)
   if (command && 'error' in command) return { replyNow: command.error }
 
+  if (command?.kind === 'open') {
+    return withAttach({ open: { id: command.id } }, hasFiles)
+  }
   if (command?.kind === 'new') {
     return withAttach({ create: { title: command.title, reply: 'created' } }, hasFiles)
   }
@@ -105,6 +137,7 @@ function withAttach(plan: Plan, hasFiles: boolean): Plan {
 }
 
 function matchCommand(text: string):
+  | { kind: 'open', id: string }
   | { kind: 'new', title: string }
   | { kind: 'amount', title: string, amount: number }
   | { kind: 'begin', iso: string }
@@ -116,6 +149,10 @@ function matchCommand(text: string):
   const rule = COMMANDS.find(item => lower.startsWith(item.prefix))
   if (!rule) return null
   const value = text.slice(rule.prefix.length).trim()
+  if (rule.kind === 'open') {
+    if (!/^\d+$/.test(value)) return { error: BAD_ID }
+    return { kind: 'open', id: value }
+  }
   if (rule.kind === 'new') {
     if (!value) return { error: EMPTY_TITLE }
     return { kind: 'new', title: value }

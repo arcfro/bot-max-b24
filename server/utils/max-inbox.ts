@@ -5,6 +5,7 @@ import {
   NO_DEAL,
   WRITTEN,
   dealCreatedReply,
+  dealFieldsReply,
   maxSenderAllowed,
   planMaxMessage,
   withDealId,
@@ -14,6 +15,7 @@ import {
   createMaxDeal,
   findOrCreateMaxContact,
   findOrCreateNamedContact,
+  getMaxDealForm,
   setDealClient,
   updateMaxDeal,
 } from './bitrix-crm'
@@ -105,6 +107,10 @@ export async function handleMaxUpdate(update: unknown) {
     await reply(withDealId(plan.replyNow, client?.dealId))
     return
   }
+  if (plan.open) {
+    await openDeal(row.bitrixWebhookUrl, message, client?.contactId ?? null, plan.open.id, plan.attach ? media : [], token, reply)
+    return
+  }
   if (!plan.create && !plan.patch && !plan.attach && !plan.client) return
 
   if (!row.bitrixWebhookUrl) {
@@ -154,6 +160,42 @@ export async function handleMaxUpdate(update: unknown) {
     if (!plan.create && client?.dealId && /not found/i.test(messageText)) clearDeal(message.userId)
     lines.push(messageText)
     await reply(withDealId(lines.join('\n'), dealId))
+  }
+}
+
+async function openDeal(
+  webhook: string | null,
+  message: Incoming,
+  contactId: string | null,
+  dealId: string,
+  media: MaxAttachment[],
+  token: string,
+  reply: (text: string) => unknown,
+) {
+  if (!webhook) {
+    await reply('Битрикс24 не подключён')
+    return
+  }
+  try {
+    const form = await getMaxDealForm(webhook, dealId)
+    const savedContact = contactId || await findOrCreateMaxContact(webhook, message.userId, message.name)
+    const openedId = form.id || dealId
+    saveClient(message.userId, savedContact, openedId)
+    const lines = [dealFieldsReply({ ...form, id: openedId })]
+    if (media.length) {
+      const files = await loadFiles(token, media)
+      await attachFilesToDeal(webhook, openedId, files)
+      lines.push(FILE_ATTACHED)
+    }
+    await reply(lines.join('\n'))
+  }
+  catch (error) {
+    const messageText = failureMessage(error, 'Ошибка')
+    if (/not[_\s-]*found/i.test(messageText)) {
+      await reply('Сделка не найдена')
+      return
+    }
+    await reply(messageText)
   }
 }
 

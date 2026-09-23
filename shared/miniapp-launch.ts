@@ -1,10 +1,31 @@
-/** Строка initData: обёртка WebAppData, плоский хеш десктопа, storage, мост. */
+/** Строка initData: полный URL, хеш, storage, мост. Обрезок start_param= не принимается. */
 export function readLaunchInitData(
   hash: string,
   stored: string | null | undefined,
   bridge: string | null | undefined,
 ): string {
-  return webAppDataFrom(hash) || stored || bridge || ''
+  return launchFrom(hash) || signedLaunch(stored) || signedLaunch(bridge) || ''
+}
+
+function signedLaunch(value: string | null | undefined): string {
+  if (!value) return ''
+  if (!value.includes('hash=') || !value.includes('auth_date=') || !value.includes('user=')) return ''
+  return value
+}
+
+function launchFrom(raw: string): string {
+  if (!raw) return ''
+  const hashAt = raw.indexOf('#')
+  if (hashAt >= 0) {
+    const fromHash = webAppDataFrom(raw.slice(hashAt))
+    if (fromHash) return fromHash
+  }
+  const at = raw.indexOf('WebAppData=')
+  if (at >= 0) {
+    const fromData = webAppDataFrom(raw.slice(at))
+    if (fromData) return fromData
+  }
+  return webAppDataFrom(raw)
 }
 
 function looksLikeInitData(value: string): boolean {

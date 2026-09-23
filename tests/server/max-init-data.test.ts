@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { readMaxInitData } from '../../server/utils/max-init-data'
+import { maxInitFailure, readMaxInitData } from '../../server/utils/max-init-data'
 
 const TOKEN = 'bot-token'
 const NOW = 1_771_409_719
@@ -33,6 +33,13 @@ describe('readMaxInitData', () => {
       name: 'Max User',
       username: 'max',
     })
+  })
+
+  it('names why a launch was rejected', () => {
+    expect(maxInitFailure('start_param=', TOKEN, NOW)).toBe('start_param')
+    const fresh = sign({ auth_date: String(NOW), user })
+    expect(maxInitFailure(`${fresh}&hash=ab`, TOKEN, NOW)).toBe('sig')
+    expect(maxInitFailure(sign({ auth_date: String(NOW - 3601), user }), TOKEN, NOW)).toBe('age')
   })
 
   it('rejects a bad signature, a stale auth_date, and a missing user', () => {

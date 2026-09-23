@@ -25,9 +25,17 @@ describe('readLaunchInitData', () => {
     )
   })
 
-  it('falls back to storage, then the bridge', () => {
-    expect(readLaunchInitData('', 'from-storage', '')).toBe('from-storage')
-    expect(readLaunchInitData('#WebAppPlatform=desktop', null, 'from-bridge')).toBe('from-bridge')
+  it('reads initData from the full desktop URL, not a truncated storage leftover', () => {
+    const inner = 'start_param=&auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab'
+    const href = `https://max.ingeo-lab.ru/miniapp?WebAppStartParam=#WebAppData=${encodeURIComponent(inner)}&WebAppPlatform=desktop`
+    expect(readLaunchInitData(href, 'start_param=', 'start_param=')).toBe(inner)
+  })
+
+  it('falls back to storage, then the bridge, and ignores a cut WebAppData', () => {
+    const stored = 'auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab'
+    expect(readLaunchInitData('', stored, '')).toBe(stored)
+    expect(readLaunchInitData('#WebAppPlatform=desktop', null, stored)).toBe(stored)
+    expect(readLaunchInitData('', 'start_param=', 'start_param=')).toBe('')
     expect(readLaunchInitData('', null, '')).toBe('')
   })
 })

@@ -89,23 +89,19 @@ watch(dealIdInput, (value) => {
   loadTimer = setTimeout(() => openDeal(id), 300)
 })
 
-function navigationFragment(): string {
+function navigationName(): string {
   const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-  if (!entry?.name) return ''
-  try {
-    const url = new URL(entry.name)
-    return `${url.hash}&${url.search.replace(/^\?/, '')}`
-  }
-  catch {
-    return ''
-  }
+  return entry?.name || ''
 }
 
 function webAppInitData(): string {
   const webApp = (window as Window & { WebApp?: { initData?: string } }).WebApp
-  const value = readLaunchInitData(location.hash, sessionStorage.getItem('WebAppData'), webApp?.initData)
+  const value = readLaunchInitData(location.hash, null, null)
+    || readLaunchInitData(location.href, null, null)
+    || readLaunchInitData(document.URL, null, null)
     || readLaunchInitData(location.search, null, null)
-    || readLaunchInitData(navigationFragment(), null, null)
+    || readLaunchInitData(navigationName(), null, null)
+    || readLaunchInitData('', sessionStorage.getItem('WebAppData'), webApp?.initData)
   if (value) sessionStorage.setItem('WebAppData', value)
   return value
 }
@@ -128,7 +124,8 @@ function launchDiag(): string {
     const nav = entry?.name ? new URL(entry.name).hash.length : 0
     const stored = sessionStorage.getItem('WebAppData') ? 1 : 0
     const webView = 'WebViewHandler' in window ? 1 : 0
-    return `h${location.hash.length} n${nav} s${stored} v${webView}`
+    const href = location.href.includes('WebAppData') || document.URL.includes('WebAppData') ? 1 : 0
+    return `h${location.hash.length} n${nav} u${href} s${stored} v${webView}`
   }
   catch {
     return 'diag'
