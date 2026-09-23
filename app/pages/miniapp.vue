@@ -1,5 +1,14 @@
 <template>
-  <div class="stack">
+  <div class="miniapp-page stack">
+    <button
+      type="button"
+      class="help-fab"
+      aria-label="Инструкция"
+      @click="helpOpen = true"
+    >
+      ?
+    </button>
+    <MiniappHelpOverlay v-if="helpOpen" @close="helpOpen = false" />
     <header>
       <p class="mono" style="margin: 0;">№:{{ dealId || '—' }}</p>
       <h1>{{ dealTitle || 'Нет активной сделки' }}</h1>
@@ -107,6 +116,7 @@ const {
 } = useMiniappDeal(initData, ready)
 
 const displayError = computed(() => initError.value || error.value)
+const helpOpen = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
@@ -148,6 +158,29 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.miniapp-page {
+  position: relative;
+}
+
+.help-fab {
+  position: fixed;
+  top: calc(0.85rem + env(safe-area-inset-top));
+  right: calc(0.85rem + env(safe-area-inset-right));
+  z-index: 20;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--accent);
+  box-shadow: var(--shadow);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
 h1 {
   font-size: 1.35rem;
   margin: 0.2rem 0 0;
