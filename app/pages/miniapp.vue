@@ -62,7 +62,8 @@ import { MINIAPP_LAUNCH_KEY, readLaunchInitData } from '#shared/miniapp-launch'
 
 useSeoMeta({ title: 'Сделка' })
 
-type DealResponse = DealForm & { message?: string }
+type DealResponse = DealForm & { message?: string, revision?: number }
+type RevisionResponse = { dealId: string | null, updatedAt: number }
 
 const dealId = ref<string | null>(null)
 const dealTitle = ref('')
@@ -81,7 +82,9 @@ const error = ref('')
 const message = ref('')
 let initData = ''
 let loadedId = ''
+let lastRevision = 0
 let loadTimer: ReturnType<typeof setTimeout> | undefined
+let pollTimer: ReturnType<typeof setInterval> | undefined
 
 function queueDealLookup(value: string) {
   const id = parseDealIdInput(value)
@@ -151,17 +154,59 @@ function fail(e: any, fallback: string) {
   error.value = e?.data?.statusMessage || e?.statusMessage || fallback
 }
 
+function markRevision(revision?: number) {
+  if (revision != null) lastRevision = revision
+}
+
 function showDeal(deal: DealResponse, fill: boolean) {
   loadedId = deal.id || ''
   dealId.value = deal.id
   dealTitle.value = deal.title || ''
   dealIdInput.value = deal.id || ''
+  markRevision(deal.revision)
   if (!fill) return
   title.value = deal.title || ''
   amount.value = deal.amount || ''
   begin.value = deal.begin || ''
   close.value = deal.close || ''
   clientName.value = deal.client || ''
+}
+
+function canAutoSync(): boolean {
+  if (!ready.value || !initData || pending.value || looking.value) return false
+  const typed = inputDealId()
+  return !typed || typed === loadedId
+}
+
+async function refreshActiveDeal() {
+  if (!canAutoSync()) return
+  try {
+    const deal = await $fetch<DealResponse>('/api/miniapp/deal', {
+      method: 'POST',
+      body: { initData },
+    })
+    if (!canAutoSync()) return
+    showDeal(deal, true)
+  }
+  catch {
+    // тихо: бот мог сменить сделку на несуществующую, следующий poll попробует снова
+  }
+}
+
+async function syncRevision() {
+  if (!canAutoSync()) return
+  try {
+    const rev = await $fetch<RevisionResponse>('/api/miniapp/revision', {
+      method: 'POST',
+      body: { initData },
+    })
+    if (!canAutoSync()) return
+    if (rev.updatedAt === lastRevision && rev.dealId === dealId.value) return
+    await refreshActiveDeal()
+  }
+  catch {
+    // ignore
+  }
 }
 
 let lookup = 0
@@ -267,8 +312,19 @@ async function submit(forceNew = false) {
   }
 }
 
+function onVisible() {
+  if (document.visibilityState === 'visible') syncRevision()
+}
+
 onMounted(() => {
   loadDeal()
+  pollTimer = setInterval(syncRevision, 2500)
+  document.addEventListener('visibilitychange', onVisible)
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+  document.removeEventListener('visibilitychange', onVisible)
 })
 </script>
 

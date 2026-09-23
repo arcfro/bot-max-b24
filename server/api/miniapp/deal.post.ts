@@ -12,8 +12,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'ID сделки — число' })
   }
   const client = getClient(user.userId)
+  const revision = client?.updatedAt ?? 0
   const dealId = requested || client?.dealId
-  if (!dealId) return formFromDeal(null)
+  if (!dealId) return { ...formFromDeal(null), revision }
   if (!row.bitrixWebhookUrl) {
     throw createError({ statusCode: 400, statusMessage: 'Битрикс24 не подключён' })
   }
@@ -24,14 +25,14 @@ export default defineEventHandler(async (event) => {
         || await findOrCreateMaxContact(row.bitrixWebhookUrl, user.userId, user.name)
       saveClient(user.userId, contactId, form.id)
     }
-    return form
+    return { ...form, revision: getClient(user.userId)?.updatedAt ?? revision }
   }
   catch (error) {
     const message = failureMessage(error, 'Ошибка')
     if (/not[_\s-]*found/i.test(message)) {
       if (!requested) {
         clearDeal(user.userId)
-        return formFromDeal(null)
+        return { ...formFromDeal(null), revision: getClient(user.userId)?.updatedAt ?? 0 }
       }
       throw createError({ statusCode: 404, statusMessage: 'Сделка не найдена' })
     }

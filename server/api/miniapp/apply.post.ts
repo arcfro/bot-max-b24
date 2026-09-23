@@ -85,7 +85,7 @@ export default defineEventHandler(async (event) => {
     if (!dealId) throw new Error(NO_DEAL)
     saveClient(user.userId, contactId, dealId)
     const deal = await getMaxDealForm(webhook, dealId)
-    return { ...deal, message: lines.join('\n') || WRITTEN }
+    return { ...deal, revision: getClient(user.userId)?.updatedAt ?? 0, message: lines.join('\n') || WRITTEN }
   }
   catch (error) {
     const message = failureMessage(error, 'Ошибка')
