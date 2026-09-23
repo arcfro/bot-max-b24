@@ -18,26 +18,22 @@
           Токен бота
           <span v-if="maxStatus?.connected" class="ok-mark" title="Токен проверен">✓</span>
         </span>
-        <input
+        <PasswordInput
           v-model="maxToken"
-          type="password"
           autocomplete="off"
-          spellcheck="false"
           :placeholder="maxStatus?.connected ? 'сохранён — введите новый, чтобы заменить' : 'вставьте токен'"
-        >
+        />
       </label>
       <label>
         <span class="check-line">
           Вебхук CRM Битрикс24
           <span v-if="maxStatus?.bitrixWebhookHost" class="ok-mark" title="Вебхук проверен">✓</span>
         </span>
-        <input
+        <PasswordInput
           v-model="bitrixWebhook"
-          type="password"
           autocomplete="off"
-          spellcheck="false"
           :placeholder="maxStatus?.bitrixWebhookHost ? 'сохранён — введите новый, чтобы заменить' : 'https://портал.bitrix24.ru/rest/1/код/'"
-        >
+        />
       </label>
       <div class="nav" style="align-items: center; gap: 0.75rem; flex-wrap: wrap;">
         <button
@@ -93,97 +89,28 @@
 </template>
 
 <script setup lang="ts">
-import type { MaxStatus } from '#shared/max-status'
-
 useSeoMeta({ title: 'Настройки MAX' })
 
 const { clear: clearSession } = useUserSession()
-const maxToken = ref('')
-const bitrixWebhook = ref('')
-const maxStatus = ref<MaxStatus | null>(null)
-const maxPending = ref(false)
-const maxErrors = ref<string[]>([])
-const allowFrom = ref('')
-const allowlistEnabled = ref(false)
-const allowPending = ref(false)
-const allowError = ref('')
-const allowSaved = ref(false)
-const loadError = ref('')
+const {
+  maxToken,
+  bitrixWebhook,
+  maxStatus,
+  maxPending,
+  maxErrors,
+  allowFrom,
+  allowlistEnabled,
+  allowPending,
+  allowError,
+  allowSaved,
+  loadError,
+  maxWebhookHint,
+  formatDateTime,
+  saveAllowlist,
+  connectMax,
+} = useMaxSettings()
+
 const logoutPending = ref(false)
-
-const maxWebhookHint = computed(() => {
-  const origin = String(useRuntimeConfig().public.appUrl || '').replace(/\/$/, '')
-  return origin ? `${origin}/api/max/webhook` : '/api/max/webhook'
-})
-
-function formatDateTime(ms: number) {
-  return new Date(ms).toLocaleString('ru-RU')
-}
-
-async function loadMax() {
-  loadError.value = ''
-  try {
-    const status = await $fetch<MaxStatus>('/api/settings/max')
-    maxStatus.value = status
-    allowFrom.value = status.allowFrom
-    allowlistEnabled.value = status.allowlistEnabled
-  }
-  catch (e: any) {
-    maxStatus.value = null
-    loadError.value = e?.data?.statusMessage || e?.statusMessage || 'Не удалось загрузить статус'
-  }
-}
-
-async function saveAllowlist() {
-  allowError.value = ''
-  allowSaved.value = false
-  allowPending.value = true
-  try {
-    const res = await $fetch<MaxStatus>('/api/settings/max', {
-      method: 'POST',
-      body: {
-        allowFrom: allowFrom.value,
-        allowlistEnabled: allowlistEnabled.value,
-      },
-    })
-    maxStatus.value = res
-    allowFrom.value = res.allowFrom
-    allowlistEnabled.value = res.allowlistEnabled
-    allowSaved.value = true
-  }
-  catch (e: any) {
-    allowError.value = e?.data?.statusMessage || e?.statusMessage || 'Не удалось сохранить список'
-  }
-  finally {
-    allowPending.value = false
-  }
-}
-
-async function connectMax() {
-  maxErrors.value = []
-  maxPending.value = true
-  const sentToken = maxToken.value.trim()
-  const sentBitrix = bitrixWebhook.value.trim()
-  try {
-    const res = await $fetch<MaxStatus>('/api/settings/max', {
-      method: 'POST',
-      body: {
-        token: sentToken,
-        bitrixWebhook: sentBitrix,
-      },
-    })
-    maxStatus.value = res
-    if (sentToken && !res.tokenError) maxToken.value = ''
-    if (sentBitrix && !res.bitrixError) bitrixWebhook.value = ''
-    maxErrors.value = [res.tokenError, res.bitrixError].filter((line): line is string => !!line)
-  }
-  catch (e: any) {
-    maxErrors.value = [e?.data?.statusMessage || e?.statusMessage || 'Не удалось подключить']
-  }
-  finally {
-    maxPending.value = false
-  }
-}
 
 async function logout() {
   logoutPending.value = true
@@ -196,10 +123,6 @@ async function logout() {
     logoutPending.value = false
   }
 }
-
-onMounted(() => {
-  loadMax()
-})
 </script>
 
 <style scoped>

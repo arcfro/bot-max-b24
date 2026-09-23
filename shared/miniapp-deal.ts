@@ -14,6 +14,15 @@ export type DealForm = {
   files: DealFile[]
 }
 
+export type DealResponse = DealForm & { message?: string, revision?: number }
+
+export type RevisionResponse = { dealId: string | null, updatedAt: number }
+
+export function dealFileDate(raw: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(raw ?? '').trim())
+  return match?.[1] ?? ''
+}
+
 const MAX_FILE_PREFIX = 'Файл из MAX'
 
 const empty: DealForm = {

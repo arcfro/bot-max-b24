@@ -12,7 +12,7 @@
           <span v-if="looking" class="spinner" aria-label="Загрузка сделки" />
         </span>
       </label>
-      <p v-if="error" class="error" style="margin: 0;">{{ error }}</p>
+      <p v-if="displayError" class="error" style="margin: 0;">{{ displayError }}</p>
       <label>
         Название
         <input v-model="title" autocomplete="off" :disabled="pending || looking">
@@ -53,16 +53,7 @@
           </button>
         </span>
       </label>
-      <div v-if="dealId" class="file-list-wrap">
-        <p class="file-list-title">Файлы сделки</p>
-        <ul v-if="files.length" class="file-list">
-          <li v-for="file in files" :key="file.id">
-            <span class="file-name">{{ file.name }}</span>
-            <span v-if="fileDate(file.created)" class="file-date muted">{{ fileDate(file.created) }}</span>
-          </li>
-        </ul>
-        <p v-else class="muted file-empty">Пока нет файлов</p>
-      </div>
+      <MiniappDealFileList v-if="dealId" :files="files" />
       <button type="submit" :disabled="pending || looking || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
       </button>
@@ -81,304 +72,53 @@
 </template>
 
 <script setup lang="ts">
-import { BAD_ID, NO_DEAL } from '#shared/max-commands'
-import type { DealFile, DealForm } from '#shared/miniapp-deal'
-import { parseDealIdInput } from '#shared/miniapp-id'
-import { MINIAPP_LAUNCH_KEY, readLaunchInitData } from '#shared/miniapp-launch'
-
 useSeoMeta({ title: 'Сделка' })
 
-type DealResponse = DealForm & { message?: string, revision?: number }
-type RevisionResponse = { dealId: string | null, updatedAt: number }
+const { initData, ready, initError, resolveInitData, refreshInitData, bindLateLoad, isAuthRetryable } = useMiniappInitData()
+const {
+  dealId,
+  dealTitle,
+  dealIdInput,
+  title,
+  amount,
+  begin,
+  close,
+  clientName,
+  fileInput,
+  fileLabel,
+  files,
+  pending,
+  looking,
+  error,
+  message,
+  loadActiveDeal,
+  syncRevision,
+  pickFile,
+  onFile,
+  submit,
+} = useMiniappDeal(initData, ready)
 
-const dealId = ref<string | null>(null)
-const dealTitle = ref('')
-const dealIdInput = ref('')
-const title = ref('')
-const amount = ref('')
-const begin = ref('')
-const close = ref('')
-const clientName = ref('')
-const fileInput = ref<HTMLInputElement | null>(null)
-const fileLabel = ref('Выбрать файл')
-const files = ref<DealFile[]>([])
-const pending = ref(false)
-const looking = ref(false)
-const ready = ref(false)
-const error = ref('')
-const message = ref('')
-let initData = ''
-let loadedId = ''
-let lastRevision = 0
-let loadTimer: ReturnType<typeof setTimeout> | undefined
+const displayError = computed(() => initError.value || error.value)
+
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
-function queueDealLookup(value: string) {
-  const id = parseDealIdInput(value)
-  if (loadTimer) clearTimeout(loadTimer)
-  looking.value = false
-  if (/^ID:/i.test(value.trim()) && !id) {
-    error.value = BAD_ID
-    return
-  }
-  if (!ready.value || !id || id === loadedId) return
-  loadTimer = setTimeout(() => openDeal(id), 300)
-}
-
-watch(dealIdInput, queueDealLookup)
-watch(ready, (isReady) => {
-  if (isReady) queueDealLookup(dealIdInput.value)
-})
-
-function navigationName(): string {
-  const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-  return entry?.name || ''
-}
-
-function webAppInitData(): string {
-  const webApp = (window as Window & { WebApp?: { initData?: string } }).WebApp
-  const value = readLaunchInitData(location.hash, null, null)
-    || readLaunchInitData(location.href, null, null)
-    || readLaunchInitData(document.URL, null, null)
-    || readLaunchInitData(location.search, null, null)
-    || readLaunchInitData(navigationName(), null, null)
-    || readLaunchInitData('', sessionStorage.getItem(MINIAPP_LAUNCH_KEY), webApp?.initData)
-  if (value) sessionStorage.setItem(MINIAPP_LAUNCH_KEY, value)
-  return value
-}
-
-function clearLaunchCache() {
-  sessionStorage.removeItem(MINIAPP_LAUNCH_KEY)
-}
-
-async function waitInitData(): Promise<string> {
-  const started = Date.now()
-  while (Date.now() - started < 8000) {
-    const value = webAppInitData()
-    if (value) return value
-    await new Promise(resolve => setTimeout(resolve, 50))
-  }
-  return webAppInitData()
-}
-
-let lateBound = false
-
-function launchDiag(): string {
-  try {
-    const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-    const nav = entry?.name ? new URL(entry.name).hash.length : 0
-    const stored = sessionStorage.getItem(MINIAPP_LAUNCH_KEY) ? 1 : 0
-    const webView = 'WebViewHandler' in window ? 1 : 0
-    const href = location.href.includes('WebAppData') || document.URL.includes('WebAppData') ? 1 : 0
-    return `h${location.hash.length} n${nav} u${href} s${stored} v${webView}`
-  }
-  catch {
-    return 'diag'
-  }
-}
-
-function fail(e: any, fallback: string) {
-  error.value = e?.data?.statusMessage || e?.statusMessage || fallback
-}
-
-function markRevision(revision?: number) {
-  if (revision != null) lastRevision = revision
-}
-
-function fileDate(raw: string): string {
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(raw ?? '').trim())
-  return match?.[1] ?? ''
-}
-
-function showDeal(deal: DealResponse, fill: boolean) {
-  loadedId = deal.id || ''
-  dealId.value = deal.id
-  dealTitle.value = deal.title || ''
-  dealIdInput.value = deal.id || ''
-  files.value = deal.files ?? []
-  markRevision(deal.revision)
-  if (!fill) return
-  title.value = deal.title || ''
-  amount.value = deal.amount || ''
-  begin.value = deal.begin || ''
-  close.value = deal.close || ''
-  clientName.value = deal.client || ''
-}
-
-function canAutoSync(): boolean {
-  if (!ready.value || !initData || pending.value || looking.value) return false
-  const typed = inputDealId()
-  return !typed || typed === loadedId
-}
-
-async function refreshActiveDeal() {
-  if (!canAutoSync()) return
-  try {
-    const deal = await $fetch<DealResponse>('/api/miniapp/deal', {
-      method: 'POST',
-      body: { initData },
-    })
-    if (!canAutoSync()) return
-    showDeal(deal, true)
-  }
-  catch {
-    // тихо: бот мог сменить сделку на несуществующую, следующий poll попробует снова
-  }
-}
-
-async function syncRevision() {
-  if (!canAutoSync()) return
-  try {
-    const rev = await $fetch<RevisionResponse>('/api/miniapp/revision', {
-      method: 'POST',
-      body: { initData },
-    })
-    if (!canAutoSync()) return
-    if (rev.updatedAt === lastRevision && rev.dealId === dealId.value) return
-    await refreshActiveDeal()
-  }
-  catch {
-    // ignore
-  }
-}
-
-let lookup = 0
-
-function inputDealId(): string | null {
-  return parseDealIdInput(dealIdInput.value)
-}
-
-async function openDeal(id: string) {
-  if (id !== inputDealId()) return
-  const ticket = ++lookup
-  looking.value = true
-  error.value = ''
-  try {
-    const deal = await $fetch<DealResponse>('/api/miniapp/deal', {
-      method: 'POST',
-      body: { initData, id },
-    })
-    if (ticket !== lookup || id !== inputDealId()) return
-    showDeal(deal, true)
-    message.value = ''
-  }
-  catch (e: any) {
-    if (ticket !== lookup || id !== inputDealId()) return
-    const status = e?.statusCode || e?.status
-    const text = String(e?.data?.statusMessage || e?.statusMessage || '')
-    if (status === 404 || /not[_\s-]*found/i.test(text)) error.value = 'Сделка не найдена'
-    else fail(e, 'Сделка не найдена')
-  }
-  finally {
-    if (ticket === lookup) looking.value = false
-  }
-}
 async function loadDeal(retry = true) {
+  initError.value = ''
   error.value = ''
-  initData = await waitInitData()
-  if (!initData) {
-    error.value = `Откройте экран из MAX (${launchDiag()})`
-    if (!lateBound) {
-      lateBound = true
-      const pull = () => {
-        const value = webAppInitData()
-        if (!value) return
-        window.removeEventListener('hashchange', pull)
-        window.removeEventListener('max-init', pull)
-        loadDeal()
-      }
-      window.addEventListener('hashchange', pull)
-      window.addEventListener('max-init', pull)
-    }
+  const resolved = await resolveInitData()
+  if (!resolved) {
+    bindLateLoad(() => loadDeal(retry))
     return
   }
-  ready.value = true
   try {
-    const deal = await $fetch<DealResponse>('/api/miniapp/deal', {
-      method: 'POST',
-      body: { initData },
-    })
-    showDeal(deal, true)
+    await loadActiveDeal()
   }
-  catch (e: any) {
-    const status = e?.statusCode || e?.status
-    const text = String(e?.data?.statusMessage || e?.statusMessage || '')
-    if (retry && status === 401 && /\((sig|age)\)/.test(text)) {
-      clearLaunchCache()
-      initData = await waitInitData()
-      if (initData) return loadDeal(false)
+  catch (e: unknown) {
+    if (retry && isAuthRetryable(e)) {
+      const refreshed = await refreshInitData(true)
+      if (refreshed) return loadDeal(false)
     }
-    fail(e, 'Не удалось прочитать сделку')
-  }
-}
-
-function resetFileInput() {
-  fileLabel.value = 'Выбрать файл'
-  if (fileInput.value) fileInput.value.value = ''
-}
-
-function pickFile() {
-  if (pending.value || looking.value || !ready.value) return
-  fileInput.value?.click()
-}
-
-async function onFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const picked = input.files?.[0]
-  if (!picked) return
-  if (!dealId.value) {
-    error.value = NO_DEAL
-    resetFileInput()
-    return
-  }
-  fileLabel.value = picked.name
-  await uploadFile(picked)
-}
-
-async function uploadFile(picked: File) {
-  error.value = ''
-  message.value = ''
-  pending.value = true
-  try {
-    const body = new FormData()
-    body.set('initData', initData)
-    body.set('file', picked)
-    const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
-    showDeal(deal, true)
-    message.value = deal.message || 'Файл прикреплён'
-    resetFileInput()
-  }
-  catch (e: any) {
-    fail(e, 'Не удалось прикрепить файл')
-    resetFileInput()
-  }
-  finally {
-    pending.value = false
-  }
-}
-
-async function submit(forceNew = false) {
-  error.value = ''
-  message.value = ''
-  pending.value = true
-  try {
-    const body = new FormData()
-    body.set('initData', initData)
-    body.set('title', title.value)
-    body.set('amount', amount.value)
-    body.set('begin', begin.value)
-    body.set('close', close.value)
-    body.set('client', clientName.value)
-    if (forceNew) body.set('newDeal', '1')
-    const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
-    showDeal(deal, true)
-    message.value = deal.message || 'Записано'
-  }
-  catch (e: any) {
-    fail(e, 'Не удалось записать')
-  }
-  finally {
-    pending.value = false
+    error.value = apiErrorMessage(e, 'Не удалось прочитать сделку')
   }
 }
 
@@ -453,50 +193,5 @@ button {
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   border: 0;
-}
-
-.file-list-wrap {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.file-list-title {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-
-.file-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 0.35rem;
-}
-
-.file-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--input-bg);
-}
-
-.file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-date {
-  flex: 0 0 auto;
-  font-size: 0.82rem;
-}
-
-.file-empty {
-  margin: 0;
-  font-size: 0.9rem;
 }
 </style>

@@ -46,8 +46,8 @@ async function onSubmit() {
       : '/'
     await navigateTo(path)
   }
-  catch (e: any) {
-    error.value = e?.data?.statusMessage || e?.statusMessage || 'Ошибка входа'
+  catch (e: unknown) {
+    error.value = apiErrorMessage(e, 'Ошибка входа')
   }
   finally {
     pending.value = false
