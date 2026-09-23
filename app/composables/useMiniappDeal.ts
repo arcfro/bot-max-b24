@@ -15,6 +15,8 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
   const fileLabel = ref('Выбрать файл')
   const files = ref<DealFile[]>([])
   const categories = ref<DealCategory[]>([])
+  const categoriesLoading = ref(false)
+  const categoriesError = ref('')
   const categoryId = ref('')
   const loadedCategoryId = ref('')
   const stages = ref<DealStage[]>([])
@@ -125,6 +127,7 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
       if (ticket !== lookup || id !== inputDealId()) return
       showDeal(deal, true)
       message.value = ''
+      if (!categories.value.length && !categoriesLoading.value) void loadCategories()
     }
     catch (e: unknown) {
       if (ticket !== lookup || id !== inputDealId()) return
@@ -152,21 +155,33 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
 
   watch(dealIdInput, queueDealLookup)
   watch(ready, (isReady) => {
-    if (isReady) queueDealLookup(dealIdInput.value)
+    if (!isReady) return
+    queueDealLookup(dealIdInput.value)
+    void loadCategories()
   })
 
   async function loadCategories() {
-    if (!initData.value) return
+    if (!initData.value || categoriesLoading.value) return
+    categoriesLoading.value = true
+    categoriesError.value = ''
     try {
       const res = await $fetch<{ categories: DealCategory[] }>('/api/miniapp/categories', {
         method: 'POST',
         body: { initData: initData.value },
       })
       categories.value = res.categories ?? []
+      if (!categories.value.length) {
+        categoriesError.value = 'Список воронок пуст'
+        return
+      }
       if (!categoryId.value) categoryId.value = defaultCategoryId()
     }
-    catch {
-      // воронки не критичны для остального экрана
+    catch (e: unknown) {
+      categories.value = []
+      categoriesError.value = apiErrorMessage(e, 'Не удалось загрузить воронки')
+    }
+    finally {
+      categoriesLoading.value = false
     }
   }
 
@@ -213,6 +228,50 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
   function resetFileInput() {
     fileLabel.value = 'Выбрать файл'
     if (fileInput.value) fileInput.value.value = ''
+  }
+
+  function resetFormLocal() {
+    loadedId = ''
+    lookup++
+    if (loadTimer) clearTimeout(loadTimer)
+    looking.value = false
+    dealId.value = null
+    dealTitle.value = ''
+    dealIdInput.value = ''
+    title.value = ''
+    amount.value = ''
+    begin.value = ''
+    close.value = ''
+    clientName.value = ''
+    files.value = []
+    loadedCategoryId.value = ''
+    categoryId.value = defaultCategoryId()
+    stageId.value = ''
+    loadedStageId.value = ''
+    stages.value = []
+    resetFileInput()
+  }
+
+  async function clearForm() {
+    if (pending.value || looking.value || !ready.value || !initData.value) return
+    error.value = ''
+    message.value = ''
+    pending.value = true
+    try {
+      const res = await $fetch<DealResponse>('/api/miniapp/clear', {
+        method: 'POST',
+        body: { initData: initData.value },
+      })
+      resetFormLocal()
+      markRevision(res.revision)
+      message.value = 'Форма очищена'
+    }
+    catch (e: unknown) {
+      error.value = apiErrorMessage(e, 'Не удалось очистить форму')
+    }
+    finally {
+      pending.value = false
+    }
   }
 
   function pickFile() {
@@ -342,6 +401,8 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
     fileLabel,
     files,
     categories,
+    categoriesLoading,
+    categoriesError,
     categoryId,
     stages,
     stageId,
@@ -356,6 +417,7 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
     onFile,
     deleteFile,
     changeStage,
+    clearForm,
     submit,
   }
 }

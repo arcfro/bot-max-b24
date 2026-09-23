@@ -94,46 +94,57 @@ function stageEntityId(categoryId: string): string {
 }
 
 async function listDealCategoriesModern(webhook: string): Promise<DealCategory[]> {
-  const data = await bitrixCall<{
-    categories?: Array<{ id?: number | string, name?: string | null }>
-  }>(webhook, 'crm.category.list', { entityTypeId: DEAL_ENTITY_TYPE_ID })
-  const list = data.categories ?? []
-  return list
-    .map(row => ({
-      id: String(row.id ?? ''),
-      name: String(row.name ?? '').trim() || `Воронка ${row.id ?? ''}`,
-    }))
-    .sort((a, b) => Number(a.id) - Number(b.id))
+  const data = await bitrixCall<unknown>(webhook, 'crm.category.list', { entityTypeId: DEAL_ENTITY_TYPE_ID })
+  return normalizeDealCategoryRows(
+    data && typeof data === 'object' && 'categories' in data ? data : { categories: data },
+  )
 }
 
 async function listDealCategoriesLegacy(webhook: string): Promise<DealCategory[]> {
-  const rows = await bitrixCall<Array<{ ID?: number | string, NAME?: string | null }>>(
-    webhook,
-    'crm.dealcategory.list',
-    {
-      order: { SORT: 'ASC' },
-      filter: { IS_LOCKED: 'N' },
-      select: ['ID', 'NAME'],
-    },
-  )
-  const list = Array.isArray(rows) ? rows : []
+  const rows = await bitrixCall<unknown>(webhook, 'crm.dealcategory.list', {
+    order: { SORT: 'ASC' },
+    filter: { IS_LOCKED: 'N' },
+    select: ['ID', 'NAME'],
+  })
+  return normalizeDealCategoryRows(rows)
+}
+
+function normalizeDealCategoryRows(rows: unknown): DealCategory[] {
+  const list = Array.isArray(rows)
+    ? rows
+    : rows && typeof rows === 'object' && Array.isArray((rows as { categories?: unknown }).categories)
+      ? (rows as { categories: Array<{ id?: number | string, ID?: number | string, name?: string | null, NAME?: string | null }> }).categories
+      : []
   return list
-    .map(row => ({
-      id: String(row.ID ?? ''),
-      name: String(row.NAME ?? '').trim() || `Воронка ${row.ID ?? ''}`,
-    }))
+    .map((row) => {
+      const id = row.id ?? row.ID
+      const name = row.name ?? row.NAME
+      return {
+        id: String(id ?? ''),
+        name: String(name ?? '').trim() || `Воронка ${id ?? ''}`,
+      }
+    })
+    .filter(row => row.id !== '')
     .sort((a, b) => Number(a.id) - Number(b.id))
 }
 
 /** Список воронок. Отдельный вебхук проверяется через crm.dealcategory.list. */
 export async function listDealCategories(webhook: string, preferLegacy = false): Promise<DealCategory[]> {
-  if (preferLegacy) return listDealCategoriesLegacy(webhook)
-  try {
-    return await listDealCategoriesModern(webhook)
+  const attempts = preferLegacy
+    ? [listDealCategoriesLegacy, listDealCategoriesModern]
+    : [listDealCategoriesModern, listDealCategoriesLegacy]
+  let lastError: unknown
+  for (const attempt of attempts) {
+    try {
+      const list = await attempt(webhook)
+      if (list.length) return list
+    }
+    catch (error) {
+      lastError = error
+    }
   }
-  catch {
-    return listDealCategoriesLegacy(webhook)
-  }
+  if (lastError instanceof Error) throw lastError
+  return []
 }
 
 export async function listDealStages(webhook: string, categoryId: string): Promise<DealStage[]> {

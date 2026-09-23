@@ -13,6 +13,22 @@
       <p class="mono" style="margin: 0;">№:{{ dealId || '—' }}</p>
       <h1>{{ dealTitle || 'Нет активной сделки' }}</h1>
     </header>
+    <label v-if="ready" class="stage-bar">
+      Воронка
+      <select
+        v-if="categories.length"
+        v-model="categoryId"
+        :disabled="pending || looking || categoriesLoading"
+      >
+        <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+          {{ cat.name }}
+        </option>
+      </select>
+      <select v-else disabled>
+        <option>{{ categoriesLoading ? 'Загрузка…' : 'Нет воронок' }}</option>
+      </select>
+      <span v-if="categoriesError" class="error" style="margin: 0;">{{ categoriesError }}</span>
+    </label>
     <label v-if="dealId && stages.length" class="stage-bar">
       Стадия
       <select
@@ -84,14 +100,6 @@
       <button type="submit" :disabled="pending || looking || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
       </button>
-      <label v-if="categories.length">
-        Воронка
-        <select v-model="categoryId" :disabled="pending || looking || !ready">
-          <option v-for="cat in categories" :key="cat.id" :value="cat.id">
-            {{ cat.name }}
-          </option>
-        </select>
-      </label>
       <button
         v-if="dealId"
         class="secondary"
@@ -100,6 +108,14 @@
         @click="submit(true)"
       >
         Новая сделка
+      </button>
+      <button
+        class="secondary"
+        type="button"
+        :disabled="pending || looking || !ready"
+        @click="clearForm"
+      >
+        Очистить форму
       </button>
       <p v-if="message" class="muted" style="margin: 0;">{{ message }}</p>
     </form>
@@ -123,6 +139,8 @@ const {
   fileLabel,
   files,
   categories,
+  categoriesLoading,
+  categoriesError,
   categoryId,
   stages,
   stageId,
@@ -137,6 +155,7 @@ const {
   onFile,
   deleteFile,
   changeStage,
+  clearForm,
   submit,
 } = useMiniappDeal(initData, ready)
 
