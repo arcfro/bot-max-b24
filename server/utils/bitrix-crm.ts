@@ -1,3 +1,4 @@
+import { formFromDeal, type DealForm } from '#shared/miniapp-deal'
 import { bitrixWebhookBase } from './max-bot'
 
 type BitrixResponse<T> = {
@@ -129,10 +130,42 @@ export async function setDealClient(webhook: string, dealId: string, contactId: 
 }
 
 export async function getMaxDeal(webhook: string, dealId: string): Promise<{ id: string, title: string }> {
-  const deal = await bitrixCall<{ ID?: string | number, TITLE?: string | null }>(webhook, 'crm.deal.get', {
-    id: asId(dealId),
+  const form = await getMaxDealForm(webhook, dealId)
+  return { id: form.id || dealId, title: form.title }
+}
+
+export async function getMaxDealForm(webhook: string, dealId: string): Promise<DealForm> {
+  const deal = await bitrixCall<{
+    ID?: string | number
+    TITLE?: string | null
+    OPPORTUNITY?: string | number | null
+    BEGINDATE?: string | null
+    CLOSEDATE?: string | null
+    CONTACT_ID?: string | number | null
+  }>(webhook, 'crm.deal.get', { id: asId(dealId) })
+  const contactId = deal.CONTACT_ID
+  let client = ''
+  if (contactId != null && String(contactId) !== '' && String(contactId) !== '0') {
+    try {
+      const contact = await bitrixCall<{ NAME?: string | null, LAST_NAME?: string | null }>(
+        webhook,
+        'crm.contact.get',
+        { id: asId(String(contactId)) },
+      )
+      client = [contact.NAME, contact.LAST_NAME].map(part => String(part ?? '').trim()).filter(Boolean).join(' ')
+    }
+    catch {
+      client = ''
+    }
+  }
+  return formFromDeal({
+    id: deal.ID ?? dealId,
+    title: deal.TITLE,
+    opportunity: deal.OPPORTUNITY,
+    begin: deal.BEGINDATE,
+    close: deal.CLOSEDATE,
+    client,
   })
-  return { id: String(deal.ID ?? dealId), title: String(deal.TITLE ?? '') }
 }
 
 export async function updateMaxDeal(

@@ -4,7 +4,11 @@
       <p class="mono" style="margin: 0;">№:{{ dealId || '—' }}</p>
       <h1>{{ dealTitle || 'Нет активной сделки' }}</h1>
     </header>
-    <form class="card stack" @submit.prevent="submit">
+    <form class="card stack" @submit.prevent="submit()">
+      <label>
+        ID сделки
+        <input v-model="dealIdInput" inputmode="numeric" autocomplete="off" :disabled="!ready || pending">
+      </label>
       <label>
         Название
         <input v-model="title" autocomplete="off" :disabled="pending">
@@ -49,13 +53,15 @@
 
 <script setup lang="ts">
 import { readLaunchInitData } from '#shared/miniapp-launch'
+import type { DealForm } from '#shared/miniapp-deal'
 
 useSeoMeta({ title: 'Сделка' })
 
-type DealResponse = { id: string | null, title: string | null, message?: string }
+type DealResponse = DealForm & { message?: string }
 
 const dealId = ref<string | null>(null)
 const dealTitle = ref('')
+const dealIdInput = ref('')
 const title = ref('')
 const amount = ref('')
 const begin = ref('')
@@ -68,6 +74,15 @@ const ready = ref(false)
 const error = ref('')
 const message = ref('')
 let initData = ''
+let loadedId = ''
+let loadTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(dealIdInput, (value) => {
+  const id = value.trim()
+  if (loadTimer) clearTimeout(loadTimer)
+  if (!ready.value || !/^\d+$/.test(id) || id === loadedId) return
+  loadTimer = setTimeout(() => openDeal(id), 300)
+})
 
 function webAppInitData(): string {
   const webApp = (window as Window & { WebApp?: { initData?: string } }).WebApp
@@ -90,6 +105,35 @@ function fail(e: any, fallback: string) {
   error.value = e?.data?.statusMessage || e?.statusMessage || fallback
 }
 
+function showDeal(deal: DealResponse, fill: boolean) {
+  loadedId = deal.id || ''
+  dealId.value = deal.id
+  dealTitle.value = deal.title || ''
+  dealIdInput.value = deal.id || ''
+  if (!fill) return
+  title.value = deal.title || ''
+  amount.value = deal.amount || ''
+  begin.value = deal.begin || ''
+  close.value = deal.close || ''
+  clientName.value = deal.client || ''
+}
+
+async function openDeal(id: string) {
+  if (id !== dealIdInput.value.trim()) return
+  error.value = ''
+  try {
+    const deal = await $fetch<DealResponse>('/api/miniapp/deal', {
+      method: 'POST',
+      body: { initData, id },
+    })
+    if (id !== dealIdInput.value.trim()) return
+    showDeal(deal, true)
+    message.value = ''
+  }
+  catch (e: any) {
+    if (id === dealIdInput.value.trim()) fail(e, 'Сделка не найдена')
+  }
+}
 async function loadDeal() {
   error.value = ''
   initData = await waitInitData()
@@ -103,8 +147,7 @@ async function loadDeal() {
       method: 'POST',
       body: { initData },
     })
-    dealId.value = deal.id
-    dealTitle.value = deal.title || ''
+    showDeal(deal, true)
   }
   catch (e: any) {
     fail(e, 'Не удалось прочитать сделку')
@@ -131,8 +174,7 @@ async function submit(forceNew = false) {
     if (forceNew) body.set('newDeal', '1')
     if (file.value) body.set('file', file.value)
     const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
-    dealId.value = deal.id
-    dealTitle.value = deal.title || ''
+    showDeal({ ...deal, amount: '', begin: '', close: '', client: '' }, false)
     message.value = deal.message || 'Записано'
     title.value = ''
     amount.value = ''
