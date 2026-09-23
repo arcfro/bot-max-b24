@@ -39,10 +39,9 @@
 </template>
 
 <script setup lang="ts">
+import { readLaunchInitData } from '#shared/miniapp-launch'
+
 useSeoMeta({ title: 'Сделка' })
-useHead({
-  script: [{ src: 'https://st.max.ru/js/max-web-app.js', defer: true }],
-})
 
 type DealResponse = { id: string | null, title: string | null, message?: string }
 
@@ -63,7 +62,9 @@ let initData = ''
 
 function webAppInitData(): string {
   const webApp = (window as Window & { WebApp?: { initData?: string } }).WebApp
-  return webApp?.initData || ''
+  const value = readLaunchInitData(location.hash, sessionStorage.getItem('WebAppData'), webApp?.initData)
+  if (value) sessionStorage.setItem('WebAppData', value)
+  return value
 }
 
 async function waitInitData(): Promise<string> {

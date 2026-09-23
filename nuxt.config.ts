@@ -9,6 +9,12 @@ export default defineNuxtConfig({
     head: {
       htmlAttrs: { lang: 'ru' },
       title: 'MAX ↔ Битрикс24',
+      script: [
+        {
+          innerHTML: `(function(){function snap(){try{var p=new URLSearchParams((location.hash||'').replace(/^#/,''));var v=p.get('WebAppData');if(v)sessionStorage.setItem('WebAppData',v);var w=window.WebApp&&window.WebApp.initData;if(w)sessionStorage.setItem('WebAppData',w)}catch(e){}}snap();var n=0;var t=setInterval(function(){snap();if(++n>100)clearInterval(t)},50)})();`,
+        },
+        { src: 'https://st.max.ru/js/max-web-app.js' },
+      ],
     },
   },
   telemetry: false,
