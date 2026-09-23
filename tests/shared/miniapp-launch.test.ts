@@ -12,6 +12,19 @@ describe('readLaunchInitData', () => {
     expect(readLaunchInitData(hash, null, '')).toBe('auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab')
   })
 
+  it('reads double-encoded desktop WebAppData', () => {
+    const inner = 'start_param=&auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab'
+    const hash = `#WebAppData=${encodeURIComponent(inner)}&WebAppPlatform=desktop&WebAppVersion=26.32.0`
+    expect(readLaunchInitData(hash, null, '')).toBe(inner)
+  })
+
+  it('reassembles a desktop hash whose WebAppData was already decoded', () => {
+    const hash = '#WebAppData=start_param=&auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab&ip=127.0.0.1&WebAppPlatform=desktop'
+    expect(readLaunchInitData(hash, null, 'start_param=')).toBe(
+      'start_param=&auth_date=1&user=%7B%22id%22%3A5%7D&hash=ab&ip=127.0.0.1',
+    )
+  })
+
   it('falls back to storage, then the bridge', () => {
     expect(readLaunchInitData('', 'from-storage', '')).toBe('from-storage')
     expect(readLaunchInitData('#WebAppPlatform=desktop', null, 'from-bridge')).toBe('from-bridge')
