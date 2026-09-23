@@ -1,4 +1,4 @@
-import { NO_DEAL, planMaxMessage } from './max-commands'
+import { EMPTY_TITLE, NO_DEAL, planMaxMessage } from './max-commands'
 
 export const EMPTY_FORM = 'Нечего записывать'
 
@@ -19,13 +19,15 @@ export type MiniappPlan = {
   attach?: true
 }
 
-/** Поля экрана /miniapp. Название создаёт сделку или обновляет TITLE. Остальное — как команды бота. */
-export function planMiniappForm(form: MiniappForm, hasDeal: boolean): MiniappPlan {
+/** Поля экрана /miniapp. Название создаёт сделку или обновляет TITLE. `forceNew` — всегда новая, даже если активная уже есть. */
+export function planMiniappForm(form: MiniappForm, hasDeal: boolean, forceNew = false): MiniappPlan {
   const title = form.title.trim()
   const amount = form.amount.trim()
   const begin = form.begin.trim()
   const close = form.close.trim()
   const client = form.client.trim()
+  if (forceNew && !title) return { error: EMPTY_TITLE }
+  const active = forceNew ? false : hasDeal
   if (!title && !amount && !begin && !close && !client && !form.hasFile) {
     return { error: EMPTY_FORM }
   }
@@ -40,16 +42,16 @@ export function planMiniappForm(form: MiniappForm, hasDeal: boolean): MiniappPla
   if (clientPlan?.replyNow) return { error: clientPlan.replyNow }
 
   const opportunity = amountPlan?.patch?.opportunity
-  const willHaveDeal = hasDeal || Boolean(title) || opportunity != null
+  const willHaveDeal = active || Boolean(title) || opportunity != null
   if ((begin || close || client || form.hasFile) && !willHaveDeal) return { error: NO_DEAL }
 
   const plan: MiniappPlan = {}
-  if (title && !hasDeal) plan.create = { title }
-  if (opportunity != null && !hasDeal && !title) plan.create = { title: amount, opportunity }
+  if (title && !active) plan.create = { title }
+  if (opportunity != null && !active && !title) plan.create = { title: amount, opportunity }
   if (opportunity != null && plan.create) plan.create.opportunity = opportunity
 
   const patch: NonNullable<MiniappPlan['patch']> = {}
-  if (title && hasDeal) patch.title = title
+  if (title && active) patch.title = title
   if (opportunity != null && !plan.create) patch.opportunity = opportunity
   if (beginPlan?.patch?.begin) patch.begin = beginPlan.patch.begin
   if (closePlan?.patch?.close) patch.close = closePlan.patch.close

@@ -24,6 +24,16 @@ describe('planMiniappForm', () => {
     })
   })
 
+  it('starts a new deal when asked, even if one is active', () => {
+    expect(planMiniappForm({ ...empty, title: 'Вторая', begin: '22.09.2026' }, true, true)).toEqual({
+      create: { title: 'Вторая' },
+      patch: { begin: '2026-09-22' },
+    })
+    expect(planMiniappForm({ ...empty, amount: '10' }, true, true)).toEqual({
+      error: 'Пустое название',
+    })
+  })
+
   it('rejects an empty form', () => {
     expect(planMiniappForm(empty, true)).toEqual({ error: 'Нечего записывать' })
     expect(planMiniappForm({ ...empty, title: '   ' }, false)).toEqual({ error: 'Нечего записывать' })

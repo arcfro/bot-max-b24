@@ -38,6 +38,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const client = getClient(user.userId)
+  const forceNew = text('newDeal') === '1'
   const plan = planMiniappForm({
     title: text('title'),
     amount: text('amount'),
@@ -45,7 +46,7 @@ export default defineEventHandler(async (event) => {
     close: text('close'),
     client: text('client'),
     hasFile: Boolean(filePart),
-  }, Boolean(client?.dealId))
+  }, Boolean(client?.dealId), forceNew)
   if (plan.error) throw createError({ statusCode: 400, statusMessage: plan.error })
 
   const webhook = row.bitrixWebhookUrl

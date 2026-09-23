@@ -32,6 +32,15 @@
       <button type="submit" :disabled="pending || !ready">
         {{ pending ? 'Запись…' : 'Записать' }}
       </button>
+      <button
+        v-if="dealId"
+        class="secondary"
+        type="button"
+        :disabled="pending || !ready"
+        @click="submit(true)"
+      >
+        Новая сделка
+      </button>
       <p v-if="message" class="muted" style="margin: 0;">{{ message }}</p>
       <p v-if="error" class="error" style="margin: 0;">{{ error }}</p>
     </form>
@@ -107,7 +116,7 @@ function onFile(event: Event) {
   file.value = input.files?.[0] ?? null
 }
 
-async function submit() {
+async function submit(forceNew = false) {
   error.value = ''
   message.value = ''
   pending.value = true
@@ -119,6 +128,7 @@ async function submit() {
     body.set('begin', begin.value)
     body.set('close', close.value)
     body.set('client', clientName.value)
+    if (forceNew) body.set('newDeal', '1')
     if (file.value) body.set('file', file.value)
     const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
     dealId.value = deal.id
