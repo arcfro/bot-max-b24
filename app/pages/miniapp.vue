@@ -55,8 +55,10 @@
 </template>
 
 <script setup lang="ts">
-import { readLaunchInitData } from '#shared/miniapp-launch'
+import { BAD_ID } from '#shared/max-commands'
 import type { DealForm } from '#shared/miniapp-deal'
+import { parseDealIdInput } from '#shared/miniapp-id'
+import { MINIAPP_LAUNCH_KEY, readLaunchInitData } from '#shared/miniapp-launch'
 
 useSeoMeta({ title: 'Сделка' })
 
@@ -82,10 +84,14 @@ let loadedId = ''
 let loadTimer: ReturnType<typeof setTimeout> | undefined
 
 watch(dealIdInput, (value) => {
-  const id = value.trim()
+  const id = parseDealIdInput(value)
   if (loadTimer) clearTimeout(loadTimer)
   looking.value = false
-  if (!ready.value || !/^\d+$/.test(id) || id === loadedId) return
+  if (/^ID:/i.test(value.trim()) && !id) {
+    error.value = BAD_ID
+    return
+  }
+  if (!ready.value || !id || id === loadedId) return
   loadTimer = setTimeout(() => openDeal(id), 300)
 })
 
@@ -101,9 +107,13 @@ function webAppInitData(): string {
     || readLaunchInitData(document.URL, null, null)
     || readLaunchInitData(location.search, null, null)
     || readLaunchInitData(navigationName(), null, null)
-    || readLaunchInitData('', sessionStorage.getItem('WebAppData'), webApp?.initData)
-  if (value) sessionStorage.setItem('WebAppData', value)
+    || readLaunchInitData('', sessionStorage.getItem(MINIAPP_LAUNCH_KEY), webApp?.initData)
+  if (value) sessionStorage.setItem(MINIAPP_LAUNCH_KEY, value)
   return value
+}
+
+function clearLaunchCache() {
+  sessionStorage.removeItem(MINIAPP_LAUNCH_KEY)
 }
 
 async function waitInitData(): Promise<string> {
@@ -122,7 +132,7 @@ function launchDiag(): string {
   try {
     const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
     const nav = entry?.name ? new URL(entry.name).hash.length : 0
-    const stored = sessionStorage.getItem('WebAppData') ? 1 : 0
+    const stored = sessionStorage.getItem(MINIAPP_LAUNCH_KEY) ? 1 : 0
     const webView = 'WebViewHandler' in window ? 1 : 0
     const href = location.href.includes('WebAppData') || document.URL.includes('WebAppData') ? 1 : 0
     return `h${location.hash.length} n${nav} u${href} s${stored} v${webView}`
@@ -176,7 +186,7 @@ async function openDeal(id: string) {
     if (ticket === lookup) looking.value = false
   }
 }
-async function loadDeal() {
+async function loadDeal(retry = true) {
   error.value = ''
   initData = await waitInitData()
   if (!initData) {
@@ -204,6 +214,13 @@ async function loadDeal() {
     showDeal(deal, true)
   }
   catch (e: any) {
+    const status = e?.statusCode || e?.status
+    const text = String(e?.data?.statusMessage || e?.statusMessage || '')
+    if (retry && status === 401 && /\((sig|age)\)/.test(text)) {
+      clearLaunchCache()
+      initData = await waitInitData()
+      if (initData) return loadDeal(false)
+    }
     fail(e, 'Не удалось прочитать сделку')
   }
 }

@@ -1,3 +1,5 @@
+export const MINIAPP_LAUNCH_KEY = 'MiniAppInitData'
+
 /** Строка initData: полный URL, хеш, storage, мост. Обрезок start_param= не принимается. */
 export function readLaunchInitData(
   hash: string,
@@ -28,20 +30,39 @@ function launchFrom(raw: string): string {
   return webAppDataFrom(raw)
 }
 
-function looksLikeInitData(value: string): boolean {
-  return value.includes('hash=') || value.includes('auth_date=') || value.includes('user=')
+function sliceWebAppData(raw: string): string {
+  const i = raw.indexOf('WebAppData=')
+  if (i < 0) return ''
+  let start = i + 'WebAppData='.length
+  let end = raw.length
+  for (const marker of ['&WebAppPlatform=', '&WebAppVersion=', '&WebAppDeviceName=']) {
+    const at = raw.indexOf(marker, start)
+    if (at >= 0) end = Math.min(end, at)
+  }
+  let value = raw.slice(start, end)
+  if (!value) return ''
+  if (value.includes('%')) {
+    try {
+      value = decodeURIComponent(value)
+    }
+    catch {
+      return ''
+    }
+  }
+  return signedLaunch(value) ? value : ''
 }
 
 function webAppDataFrom(fragment: string): string {
   const raw = fragment.replace(/^[?#]/, '')
   if (!raw) return ''
+  const sliced = sliceWebAppData(raw)
+  if (sliced) return sliced
   const params = new URLSearchParams(raw)
   const wrapped = params.get('WebAppData')
-  // Десктоп иногда отдаёт хеш уже раскодированным: WebAppData обрывается на start_param=
-  if (wrapped && looksLikeInitData(wrapped)) return wrapped
+  if (wrapped && signedLaunch(wrapped)) return wrapped
   if (!params.has('hash') || !params.has('auth_date') || !params.has('user')) return ''
   const pairs: string[] = []
-  const cut = wrapped && !looksLikeInitData(wrapped) ? wrapped.indexOf('=') : -1
+  const cut = wrapped && !signedLaunch(wrapped) ? wrapped.indexOf('=') : -1
   if (wrapped && cut > 0) {
     const key = wrapped.slice(0, cut)
     if (!key.startsWith('WebApp')) pairs.push(`${key}=${encodeURIComponent(wrapped.slice(cut + 1))}`)
