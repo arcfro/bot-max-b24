@@ -11,6 +11,11 @@ export function parseCategoryId(raw: string | null | undefined): string | null {
   return null
 }
 
+/** Поле ID заполнено — работаем с этой сделкой; пустое — создаём новую. */
+export function hasDealIdInput(raw: string): boolean {
+  return parseDealIdInput(raw) != null
+}
+
 /** ID сделки из поля: число или команда ID:14. */
 export function parseDealIdInput(raw: string): string | null {
   const trimmed = raw.trim()

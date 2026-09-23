@@ -1,10 +1,12 @@
 import {
+  BAD_ID,
   FILE_ATTACHED,
   NO_DEAL,
   WRITTEN,
   dealCreatedReply,
 } from '#shared/max-commands'
 import { planMiniappForm } from '#shared/miniapp-form'
+import { hasDealIdInput, parseDealIdInput } from '#shared/miniapp-id'
 import {
   attachFilesToDeal,
   createMaxDeal,
@@ -40,6 +42,12 @@ export default defineEventHandler(async (event) => {
 
   const client = getClient(user.userId)
   const forceNew = text('newDeal') === '1'
+  const dealIdInputRaw = text('dealIdInput').trim()
+  const parsedInputId = parseDealIdInput(dealIdInputRaw)
+  if (dealIdInputRaw && !parsedInputId) {
+    throw createError({ statusCode: 400, statusMessage: BAD_ID })
+  }
+  const hasDeal = hasDealIdInput(dealIdInputRaw)
   const plan = planMiniappForm({
     title: text('title'),
     amount: text('amount'),
@@ -49,13 +57,13 @@ export default defineEventHandler(async (event) => {
     categoryId: text('categoryId'),
     loadedCategoryId: text('loadedCategoryId'),
     hasFile: Boolean(filePart),
-  }, Boolean(client?.dealId), forceNew)
+  }, hasDeal, forceNew)
   if (plan.error) throw createError({ statusCode: 400, statusMessage: plan.error })
 
   const webhook = hooks.main
   const crmHooks = { statusWebhook: hooks.status ?? webhook }
   const lines: string[] = []
-  let dealId = client?.dealId ?? null
+  let dealId = hasDeal ? parsedInputId : null
   try {
     const contactId = await findOrCreateMaxContact(webhook, user.userId, user.name)
     if (plan.create) {

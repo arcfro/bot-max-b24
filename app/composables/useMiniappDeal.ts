@@ -108,8 +108,20 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
     return parseDealIdInput(dealIdInput.value)
   }
 
+  function detachActiveDealLocally() {
+    loadedId = ''
+    dealId.value = null
+    dealTitle.value = ''
+    files.value = []
+    loadedCategoryId.value = ''
+    stageId.value = ''
+    loadedStageId.value = ''
+    stages.value = []
+  }
+
   function canAutoSync(): boolean {
     if (!ready.value || !initData.value || pending.value || looking.value || deletingFileId.value) return false
+    if (!dealIdInput.value.trim()) return false
     const typed = inputDealId()
     return !typed || typed === loadedId
   }
@@ -153,7 +165,10 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
     loadTimer = setTimeout(() => openDeal(id), 300)
   }
 
-  watch(dealIdInput, queueDealLookup)
+  watch(dealIdInput, (value, oldValue) => {
+    queueDealLookup(value)
+    if (!value.trim() && oldValue.trim()) detachActiveDealLocally()
+  })
   watch(ready, (isReady) => {
     if (!isReady) return
     queueDealLookup(dealIdInput.value)
@@ -374,6 +389,7 @@ export function useMiniappDeal(initData: Ref<string>, ready: Ref<boolean>) {
       body.set('client', clientName.value)
       body.set('categoryId', categoryId.value)
       body.set('loadedCategoryId', loadedCategoryId.value)
+      body.set('dealIdInput', dealIdInput.value)
       if (forceNew) body.set('newDeal', '1')
       const deal = await $fetch<DealResponse>('/api/miniapp/apply', { method: 'POST', body })
       showDeal(deal, true)

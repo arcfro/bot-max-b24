@@ -48,6 +48,7 @@
           <input v-model="dealIdInput" inputmode="numeric" autocomplete="off" :disabled="!ready || pending">
           <span v-if="looking" class="spinner" aria-label="Загрузка сделки" />
         </span>
+        <span class="muted">Оставьте пустым, чтобы создать новую сделку.</span>
       </label>
       <p v-if="displayError" class="error" style="margin: 0;">{{ displayError }}</p>
       <label>
