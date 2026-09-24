@@ -48,7 +48,19 @@ const EXT: Record<string, string> = {
 
 type MaxAttachment = {
   type?: string
+  filename?: string
   payload?: { url?: string, token?: string, filename?: string, name?: string }
+}
+
+type MessageBody = {
+  mid?: string
+  text?: string | null
+  attachments?: MaxAttachment[]
+}
+
+type LinkedMessage = {
+  type?: string
+  message?: MessageBody
 }
 
 type Incoming = {
@@ -65,7 +77,7 @@ type Incoming = {
 }
 
 export async function handleMaxUpdate(update: unknown) {
-  const message = readIncoming(update) ?? readStart(update)
+  const message = readMaxIncoming(update) ?? readStart(update)
   if (!message || message.isBot) return
 
   const row = getMaxIntegration()
@@ -220,7 +232,7 @@ async function loadFiles(token: string, attachments: MaxAttachment[]) {
     const downloaded = await downloadMaxFile(url)
     files.push({
       name: safeFileName(
-        attachment.payload?.filename || attachment.payload?.name || downloaded.fileName,
+        attachment.filename || attachment.payload?.filename || attachment.payload?.name || downloaded.fileName,
         index,
         downloaded.contentType,
       ),
@@ -230,7 +242,8 @@ async function loadFiles(token: string, attachments: MaxAttachment[]) {
   return files
 }
 
-function readIncoming(update: unknown): Incoming | null {
+/** message.body может быть null: апдейт — только пересланное сообщение. */
+export function readMaxIncoming(update: unknown): Incoming | null {
   if (!update || typeof update !== 'object') return null
   const root = update as { update_type?: string, message?: unknown }
   if (root.update_type !== 'message_created' || !root.message || typeof root.message !== 'object') return null
@@ -244,24 +257,33 @@ function readIncoming(update: unknown): Incoming | null {
       is_bot?: boolean
     }
     recipient?: { chat_id?: number }
-    body?: { mid?: string, text?: string, attachments?: MaxAttachment[] }
+    timestamp?: number
+    body?: MessageBody | null
+    link?: LinkedMessage | null
   }
   const userIdNum = message.sender?.user_id
   if (typeof userIdNum !== 'number') return null
   const name = message.sender?.name
     || [message.sender?.first_name, message.sender?.last_name].filter(Boolean).join(' ')
     || `MAX ${userIdNum}`
+  const body = message.body && typeof message.body === 'object' ? message.body : null
+  const link = message.link && typeof message.link === 'object' ? message.link : null
+  const own = Array.isArray(body?.attachments) ? body.attachments : []
+  const forwarded = link?.type === 'forward' && Array.isArray(link.message?.attachments)
+    ? link.message.attachments
+    : []
   return {
     kind: 'message',
-    mid: message.body?.mid || null,
-    text: message.body?.text || '',
+    mid: body?.mid
+      || (typeof message.timestamp === 'number' ? `fwd:${message.timestamp}:${userIdNum}` : null),
+    text: body?.text || '',
     chatId: typeof message.recipient?.chat_id === 'number' ? message.recipient.chat_id : null,
     userId: String(userIdNum),
     userIdNum,
     username: message.sender?.username || null,
     name,
     isBot: Boolean(message.sender?.is_bot),
-    attachments: Array.isArray(message.body?.attachments) ? message.body.attachments : [],
+    attachments: [...own, ...forwarded],
   }
 }
 
